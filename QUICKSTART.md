@@ -27,6 +27,7 @@ cd zero-trust
 ```bash
 cd services/controller
 go mod download
+./setup.sh
 make dev-controller
 ```
 

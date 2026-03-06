@@ -1,5 +1,6 @@
 mod config;
 mod enroll;
+mod persistence;
 mod renewal;
 mod run;
 mod tls;
