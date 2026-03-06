@@ -11,16 +11,28 @@ use crate::tls::cert_store::CertStore;
 pub async fn run() -> Result<()> {
     let cfg = config::run_config_from_env()?;
 
-    let enroll_cfg = config::EnrollConfig {
-        controller_addr: cfg.controller_addr.clone(),
-        tunneler_id: cfg.tunneler_id.clone(),
-        trust_domain: cfg.trust_domain.clone(),
-        token: cfg.enrollment_token.clone(),
-        ca_pem: cfg.ca_pem.clone(),
+    // Try loading saved enrollment state; fall back to fresh enrollment.
+    let result = match crate::persistence::load_saved_enrollment() {
+        Ok(Some(saved)) => {
+            info!("reusing saved certificate for {}", saved.spiffe_id);
+            saved
+        }
+        _ => {
+            let enroll_cfg = config::EnrollConfig {
+                controller_addr: cfg.controller_addr.clone(),
+                tunneler_id: cfg.tunneler_id.clone(),
+                trust_domain: cfg.trust_domain.clone(),
+                token: cfg.enrollment_token.clone(),
+                ca_pem: cfg.ca_pem.clone(),
+            };
+            let enrolled = enroll::enroll(&enroll_cfg).await?;
+            info!("tunneler enrolled as {}", enrolled.spiffe_id);
+            if let Err(e) = crate::persistence::save_enrollment(&enrolled) {
+                warn!("failed to persist enrollment state: {}", e);
+            }
+            enrolled
+        }
     };
-
-    let result = enroll::enroll(&enroll_cfg).await?;
-    info!("tunneler enrolled as {}", result.spiffe_id);
 
     let (not_before, not_after) = enroll::cert_validity(&result.cert_der).unwrap_or((
         SystemTime::now(),

@@ -9,8 +9,8 @@ if [[ "${EUID}" -ne 0 ]]; then
 fi
 
 echo "Stopping and disabling grpcconnector2 service..."
-systemctl stop grpcconnector2.service 2>/dev/null || true
-systemctl disable grpcconnector2.service 2>/dev/null || true
+systemctl stop connector.service 2>/dev/null || true
+systemctl disable connector.service 2>/dev/null || true
 
 echo "Removing systemd unit..."
 rm -f /etc/systemd/system/grpcconnector2.service

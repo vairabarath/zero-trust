@@ -44,6 +44,7 @@ LockPersonality=yes
 
 UMask=0077
 RuntimeDirectory=tunneler
+StateDirectory=tunneler
 
 [Install]
 WantedBy=multi-user.target

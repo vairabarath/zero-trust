@@ -14,8 +14,8 @@ This project is designed for 4-member parallel development:
 ### 1. Clone and Setup
 
 ```bash
-git clone https://github.com/sathiyaseelank-dot/group-management-ui-backend.git
-cd group-management-ui-backend
+git clone https://github.com/vairabarath/zero-trust.git
+cd zero-trust
 ```
 
 ### 2. Install Dependencies

@@ -4,6 +4,7 @@ mod config;
 mod control_plane;
 mod enroll;
 mod net_util;
+mod persistence;
 mod policy;
 mod renewal;
 mod server;
@@ -82,19 +83,30 @@ async fn cmd_run(systemd_watchdog: bool) -> Result<()> {
         tokio::spawn(watchdog::watchdog_loop());
     }
 
-    // Enroll to get certs
-    let enroll_cfg = config::EnrollConfig {
-        controller_addr: cfg.controller_addr.clone(),
-        connector_id: cfg.connector_id.clone(),
-        trust_domain: cfg.trust_domain.clone(),
-        token: cfg.enrollment_token.clone(),
-        private_ip: cfg.private_ip.clone(),
-        version: buildinfo::version().to_string(),
-        ca_pem: cfg.ca_pem.clone(),
+    // Try loading saved enrollment state; fall back to fresh enrollment.
+    let result = match persistence::load_saved_enrollment() {
+        Ok(Some(saved)) => {
+            info!("reusing saved certificate for {}", saved.spiffe_id);
+            saved
+        }
+        _ => {
+            let enroll_cfg = config::EnrollConfig {
+                controller_addr: cfg.controller_addr.clone(),
+                connector_id: cfg.connector_id.clone(),
+                trust_domain: cfg.trust_domain.clone(),
+                token: cfg.enrollment_token.clone(),
+                private_ip: cfg.private_ip.clone(),
+                version: buildinfo::version().to_string(),
+                ca_pem: cfg.ca_pem.clone(),
+            };
+            let enrolled = enroll::enroll(&enroll_cfg).await?;
+            info!("connector enrolled as {}", enrolled.spiffe_id);
+            if let Err(e) = persistence::save_enrollment(&enrolled) {
+                warn!("failed to persist enrollment state: {}", e);
+            }
+            enrolled
+        }
     };
-
-    let result = enroll::enroll(&enroll_cfg).await?;
-    info!("connector enrolled as {}", result.spiffe_id);
 
     let (not_before, not_after) = enroll::cert_validity(&result.cert_der).unwrap_or((
         SystemTime::now(),

@@ -56,7 +56,8 @@ build-frontend:
 # Development Commands
 dev-controller:
 	@echo "Running controller in dev mode..."
-	cd services/controller && go run .
+	cd services/controller && export $$(cat .env | grep -v '^#' | xargs) && \
+		INTERNAL_CA_CERT="$$(cat ca/ca.crt)" INTERNAL_CA_KEY="$$(cat ca/ca.pkcs8.key)" go run .
 
 dev-connector:
 	@echo "Running connector in dev mode..."

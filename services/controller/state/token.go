@@ -52,18 +52,23 @@ func (s *TokenStore) ConsumeToken(token, connectorID string) error {
 	}
 	var expiresAt int64
 	var consumed int
-	err := s.db.QueryRow(`SELECT expires_at, consumed FROM tokens WHERE token = ?`, token).Scan(&expiresAt, &consumed)
+	var boundID sql.NullString
+	err := s.db.QueryRow(`SELECT expires_at, consumed, connector_id FROM tokens WHERE token = ?`, token).Scan(&expiresAt, &consumed, &boundID)
 	if err == sql.ErrNoRows {
 		return fmt.Errorf("token not found")
 	}
 	if err != nil {
 		return err
 	}
-	if consumed != 0 {
-		return fmt.Errorf("token already consumed")
-	}
 	if time.Now().UTC().Unix() > expiresAt {
 		return fmt.Errorf("token expired")
+	}
+	// Allow re-enrollment if the token was already consumed by the same ID.
+	if consumed != 0 {
+		if boundID.Valid && boundID.String == connectorID {
+			return nil
+		}
+		return fmt.Errorf("token already consumed")
 	}
 	_, err = s.db.Exec(`UPDATE tokens SET consumed = 1, connector_id = ? WHERE token = ?`, connectorID, token)
 	return err

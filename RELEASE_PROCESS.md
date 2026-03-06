@@ -88,7 +88,7 @@ setup.sh:
     └─ Arch: amd64 or arm64
     ↓
 2. Build Download URL
-    https://github.com/sathiyaseelank-dot/group-management-ui-backend/
+    https://github.com/vairabarath/zero-trust/
     releases/latest/download/grpcconnector2-linux-amd64
     ↓
 3. Download Binary

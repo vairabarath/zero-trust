@@ -157,7 +157,7 @@ curl -s -X POST http://192.168.1.213:8081/api/admin/tokens \
 **Option A: One-line script install (from GitHub releases)**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/sathiyaseelank-dot/group-management-ui-backend/main/scripts/setup.sh | sudo \
+curl -fsSL https://raw.githubusercontent.com/vairabarath/zero-trust/main/scripts/setup.sh | sudo \
   CONTROLLER_ADDR="192.168.1.213:8443" \
   CONTROLLER_HTTP_ADDR="192.168.1.213:8081" \
   CONNECTOR_ID="connector-lan-01" \
