@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"io"
@@ -13,6 +14,8 @@ import (
 	"controller/state"
 
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 )
 
@@ -54,7 +57,19 @@ func (s *ControlPlaneServer) Connect(stream controllerpb.ControlPlane_ConnectSer
 
 	spiffeID, _ := SPIFFEIDFromContext(stream.Context())
 	log.Printf("control-plane stream connected: %s", spiffeID)
-	client := &connectorClient{stream: stream, connectorID: parseConnectorID(spiffeID)}
+	connectorID := parseConnectorID(spiffeID)
+	signingKey := derivePolicyKey(stream.Context(), connectorID)
+	if len(signingKey) == 0 && len(s.signingKey) > 0 {
+		signingKey = append([]byte(nil), s.signingKey...)
+	}
+	if len(signingKey) == 0 {
+		log.Printf("policy key derivation failed for connector %s", connectorID)
+	}
+	client := &connectorClient{
+		stream:      stream,
+		connectorID: connectorID,
+		signingKey:  signingKey,
+	}
 	s.addClient(spiffeID, client)
 	defer s.removeClient(spiffeID)
 	s.sendAllowlist(client)
@@ -156,6 +171,7 @@ type connectorClient struct {
 	stream      controllerpb.ControlPlane_ConnectServer
 	sendMu      sync.Mutex
 	connectorID string
+	signingKey  []byte
 }
 
 func (s *ControlPlaneServer) addClient(id string, c *connectorClient) {
@@ -247,7 +263,11 @@ func (s *ControlPlaneServer) sendPolicySnapshot(c *connectorClient) {
 	if s.db == nil || c == nil || c.connectorID == "" {
 		return
 	}
-	snap, err := CompilePolicySnapshot(s.db, c.connectorID, s.snapshotTTL, s.signingKey)
+	if len(c.signingKey) == 0 {
+		log.Printf("skipping policy snapshot for %s: no policy signing key", c.connectorID)
+		return
+	}
+	snap, err := CompilePolicySnapshot(s.db, c.connectorID, s.snapshotTTL, c.signingKey)
 	if err != nil {
 		log.Printf("failed to compile snapshot for %s: %v", c.connectorID, err)
 		return
@@ -276,4 +296,25 @@ func parseConnectorID(spiffeID string) string {
 		return ""
 	}
 	return parts[2]
+}
+
+const policyKeyLabel = "ztna-policy-signing-v1"
+
+func derivePolicyKey(ctx context.Context, connectorID string) []byte {
+	if connectorID == "" {
+		return nil
+	}
+	p, ok := peer.FromContext(ctx)
+	if !ok || p.AuthInfo == nil {
+		return nil
+	}
+	tlsInfo, ok := p.AuthInfo.(credentials.TLSInfo)
+	if !ok {
+		return nil
+	}
+	key, err := tlsInfo.State.ExportKeyingMaterial(policyKeyLabel, []byte(connectorID), 32)
+	if err != nil {
+		return nil
+	}
+	return key
 }

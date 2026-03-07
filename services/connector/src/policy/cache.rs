@@ -26,7 +26,7 @@ struct Inner {
 
 pub struct PolicyCache {
     inner: RwLock<Inner>,
-    signing_key: Vec<u8>,
+    signing_key: RwLock<Vec<u8>>,
     stale_grace: Duration,
 }
 
@@ -34,8 +34,17 @@ impl PolicyCache {
     pub fn new(signing_key: Vec<u8>, stale_grace: Duration) -> Self {
         Self {
             inner: RwLock::new(Inner::default()),
-            signing_key,
+            signing_key: RwLock::new(signing_key),
             stale_grace,
+        }
+    }
+
+    pub fn set_signing_key(&self, key: Vec<u8>) {
+        let mut w = self.signing_key.write().unwrap();
+        if key.is_empty() {
+            w.clear();
+        } else {
+            *w = key;
         }
     }
 
@@ -178,7 +187,8 @@ impl PolicyCache {
     }
 
     fn verify_snapshot(&self, snap: &PolicySnapshot) -> bool {
-        if self.signing_key.is_empty() {
+        let key = self.signing_key.read().unwrap();
+        if key.is_empty() {
             return false;
         }
         // Strip the signature, serialize, compute HMAC
@@ -188,7 +198,7 @@ impl PolicyCache {
             Ok(d) => d,
             Err(_) => return false,
         };
-        let mut mac = HmacSha256::new_from_slice(&self.signing_key).unwrap();
+        let mut mac = HmacSha256::new_from_slice(&key).unwrap();
         mac.update(&data);
         let computed = hex::encode(mac.finalize().into_bytes());
 

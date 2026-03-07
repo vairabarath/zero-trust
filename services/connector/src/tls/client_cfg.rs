@@ -9,6 +9,7 @@ use rustls::{
 use std::sync::Arc;
 use tokio::net::TcpStream;
 use tonic::transport::{Channel, Endpoint};
+use tracing::warn;
 
 use crate::tls::cert_store::CertStore;
 
@@ -85,6 +86,19 @@ pub async fn build_tonic_channel(
     store: &CertStore,
     ca_pem: &[u8],
 ) -> Result<Channel> {
+    build_tonic_channel_with_policy_key(controller_addr, trust_domain, store, ca_pem, "", None).await
+}
+
+const POLICY_KEY_LABEL: &str = "ztna-policy-signing-v1";
+
+pub async fn build_tonic_channel_with_policy_key(
+    controller_addr: &str,
+    trust_domain: &str,
+    store: &CertStore,
+    ca_pem: &[u8],
+    connector_id: &str,
+    on_policy_key: Option<Arc<dyn Fn(Vec<u8>) + Send + Sync>>,
+) -> Result<Channel> {
     let (cert_der, key_der) = store.snapshot();
 
     // Parse CA cert DER from PEM
@@ -108,15 +122,33 @@ pub async fn build_tonic_channel(
 
     let tls_connector = tokio_rustls::TlsConnector::from(client_config);
     let addr = controller_addr.to_string();
+    let connector_id = connector_id.to_string();
+    let on_policy_key = on_policy_key.clone();
 
     let connector = tower::service_fn(move |_uri: http::Uri| {
         let tls = tls_connector.clone();
         let addr = addr.clone();
+        let connector_id = connector_id.clone();
+        let on_policy_key = on_policy_key.clone();
         async move {
             let tcp = TcpStream::connect(&addr).await?;
             let domain = ServerName::try_from("controller")
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("{}", e)))?;
             let tls_stream = tls.connect(domain, tcp).await?;
+            if let Some(cb) = on_policy_key.as_ref() {
+                if !connector_id.trim().is_empty() {
+                    let conn = tls_stream.get_ref().1;
+                    let out = vec![0u8; 32];
+                    match conn.export_keying_material(
+                        out,
+                        POLICY_KEY_LABEL.as_bytes(),
+                        Some(connector_id.as_bytes()),
+                    ) {
+                        Ok(key) => cb(key),
+                        Err(e) => warn!("policy key derivation failed: {}", e),
+                    }
+                }
+            }
             Ok::<_, std::io::Error>(hyper_util::rt::TokioIo::new(tls_stream))
         }
     });

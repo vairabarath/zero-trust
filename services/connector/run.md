@@ -264,7 +264,7 @@ These scripts stop the service, remove the binary, config, systemd unit, and run
 | `CONTROLLER_ADDR` | Yes | -- | Controller gRPC `host:port` |
 | `CONNECTOR_ID` | Yes | -- | Unique connector identifier |
 | `ENROLLMENT_TOKEN` | Yes | -- | One-time enrollment token |
-| `POLICY_SIGNING_KEY` | Yes | -- | HMAC key for policy verification |
+| `POLICY_SIGNING_KEY` | No | derived from mTLS | HMAC key for policy verification (optional override if derivation fails) |
 | `TRUST_DOMAIN` | No | `mycorp.internal` | SPIFFE trust domain |
 | `CONTROLLER_CA` | No* | -- | PEM CA cert (inline) |
 | `CONTROLLER_CA_PATH` | No* | -- | Path to CA cert file |
@@ -282,7 +282,7 @@ These scripts stop the service, remove the binary, config, systemd unit, and run
 | `CONTROLLER_HTTP_ADDR` | Yes | Controller HTTP `host:port` (for CA download) |
 | `CONNECTOR_ID` | Yes | Unique connector identifier |
 | `ENROLLMENT_TOKEN` | Yes | One-time enrollment token |
-| `POLICY_SIGNING_KEY` | Yes | HMAC key for policy verification |
+| `POLICY_SIGNING_KEY` | No | Optional override if policy key derivation fails |
 
 ---
 
@@ -327,3 +327,4 @@ Check logs:
 sudo journalctl -u grpcconnector2.service -n 50 --no-pager
 ```
 Common causes: wrong `CONTROLLER_ADDR`, expired token, missing CA cert, firewall blocking port 8443.
+about the derived policy key and POLICY_SIGNING_KEY now being optional.

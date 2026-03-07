@@ -220,9 +220,22 @@ async fn connect_control_plane(
     _send_ch: &mpsc::Sender<ControlMessage>,
     recv_ch: &mut mpsc::Receiver<ControlMessage>,
 ) -> Result<()> {
-    let channel =
-        tls::client_cfg::build_tonic_channel(controller_addr, trust_domain, store, ca_pem)
-            .await?;
+    let policy_cb = {
+        let acl = acl.clone();
+        Arc::new(move |key: Vec<u8>| {
+            acl.set_signing_key(key);
+            tracing::info!("derived policy signing key from mTLS");
+        })
+    };
+    let channel = tls::client_cfg::build_tonic_channel_with_policy_key(
+        controller_addr,
+        trust_domain,
+        store,
+        ca_pem,
+        connector_id,
+        Some(policy_cb),
+    )
+    .await?;
 
     let mut client =
         enroll::pb::control_plane_client::ControlPlaneClient::new(channel);
