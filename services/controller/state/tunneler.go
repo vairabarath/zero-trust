@@ -6,7 +6,7 @@ import (
 )
 
 type TunnelerInfo struct {
-	ID       string `json:"id"`
+	ID       string `json:"tunneler_id"`
 	SPIFFEID string `json:"spiffe_id"`
 }
 
