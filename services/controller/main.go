@@ -20,6 +20,7 @@ import (
 	"controller/api"
 	"controller/ca"
 	controllerpb "controller/gen/controllerpb"
+	"controller/mailer"
 	"controller/state"
 
 	"google.golang.org/grpc"
@@ -97,9 +98,9 @@ func main() {
 
 	creds := credentials.NewTLS(tlsConfig)
 
-	db, err := state.OpenSQLite(os.Getenv("DB_PATH"))
+	db, err := state.Open(os.Getenv("DATABASE_URL"), os.Getenv("DB_PATH"))
 	if err != nil {
-		log.Fatalf("failed to open sqlite db: %v", err)
+		log.Fatalf("failed to open db: %v", err)
 	}
 	defer db.Close()
 
@@ -147,6 +148,33 @@ func main() {
 	controllerpb.RegisterEnrollmentServiceServer(grpcServer, enrollServer)
 	controllerpb.RegisterControlPlaneServer(grpcServer, controlPlaneServer)
 
+	// ---- OAuth + mailer config (optional) ----
+	var oauthCfg = admin.BuildOAuthConfig(
+		os.Getenv("GOOGLE_CLIENT_ID"),
+		os.Getenv("GOOGLE_CLIENT_SECRET"),
+		os.Getenv("OAUTH_REDIRECT_URL"),
+	)
+
+	adminLoginEmails := map[string]struct{}{}
+	if raw := os.Getenv("ADMIN_LOGIN_EMAILS"); raw != "" {
+		for _, e := range strings.Split(raw, ",") {
+			if em := strings.TrimSpace(strings.ToLower(e)); em != "" {
+				adminLoginEmails[em] = struct{}{}
+			}
+		}
+	}
+
+	var m *mailer.Mailer
+	if host := os.Getenv("SMTP_HOST"); host != "" {
+		m = mailer.New(
+			host,
+			os.Getenv("SMTP_PORT"),
+			os.Getenv("SMTP_USER"),
+			os.Getenv("SMTP_PASS"),
+			os.Getenv("SMTP_FROM"),
+		)
+	}
+
 	// ---- admin HTTP server ----
 	adminMux := http.NewServeMux()
 	adminServer := &admin.Server{
@@ -160,14 +188,34 @@ func main() {
 		AdminAuthToken:    adminAuthToken,
 		InternalAuthToken: internalAuthToken,
 		CACertPEM:         caCertPEM,
+		OAuthConfig:       oauthCfg,
+		JWTSecret:         []byte(os.Getenv("JWT_SECRET")),
+		AdminLoginEmails:  adminLoginEmails,
+		DashboardURL:      os.Getenv("DASHBOARD_URL"),
+		InviteBaseURL:     os.Getenv("INVITE_BASE_URL"),
+		Mailer:            m,
 	}
 	adminServer.RegisterRoutes(adminMux)
+	adminServer.RegisterOAuthRoutes(adminMux)
 	go func() {
 		log.Printf("admin HTTP server listening %s", adminAddr)
 		if err := http.ListenAndServe(adminAddr, adminMux); err != nil {
 			log.Fatalf("admin HTTP server failed: %v", err)
 		}
 	}()
+
+	// ---- OAuth callback listener ----
+	// Google OAuth apps register specific redirect URIs (e.g. :8080).
+	// If OAUTH_CALLBACK_ADDR is set, start an additional listener on that address
+	// serving the same mux so the registered callback URIs resolve correctly.
+	if oauthCallbackAddr := strings.TrimSpace(os.Getenv("OAUTH_CALLBACK_ADDR")); oauthCallbackAddr != "" && oauthCallbackAddr != adminAddr {
+		go func() {
+			log.Printf("OAuth callback listener on %s", oauthCallbackAddr)
+			if err := http.ListenAndServe(oauthCallbackAddr, adminMux); err != nil {
+				log.Fatalf("OAuth callback listener failed: %v", err)
+			}
+		}()
+	}
 
 	// ---- listen ----
 	lis, err := net.Listen("tcp", ":8443")

@@ -1,5 +1,5 @@
 .PHONY: help build-all build-controller build-connector build-tunneler build-frontend
-.PHONY: dev-controller dev-connector dev-tunneler dev-frontend
+.PHONY: dev-controller dev-controller-air dev-connector dev-tunneler dev-frontend
 .PHONY: test-all test-controller test-connector test-tunneler test-frontend
 .PHONY: clean clean-all
 
@@ -15,6 +15,7 @@ help:
 	@echo ""
 	@echo "Development Commands:"
 	@echo "  make dev-controller   - Run controller in dev mode"
+	@echo "  make dev-controller-air - Run controller with live-reload (requires air)"
 	@echo "  make dev-connector    - Run connector in dev mode"
 	@echo "  make dev-tunneler     - Run tunneler in dev mode"
 	@echo "  make dev-frontend     - Run frontend in dev mode"
@@ -56,8 +57,13 @@ build-frontend:
 # Development Commands
 dev-controller:
 	@echo "Running controller in dev mode..."
-	cd services/controller && export $$(cat .env | grep -v '^#' | xargs) && \
+	cd services/controller && \
+		set -a && . ./.env && set +a && \
 		INTERNAL_CA_CERT="$$(cat ca/ca.crt)" INTERNAL_CA_KEY="$$(cat ca/ca.pkcs8.key)" go run .
+
+dev-controller-air:
+	@echo "Running controller with live-reload (air)..."
+	cd services/controller && bash run-air.sh
 
 dev-connector:
 	@echo "Running connector in dev mode..."

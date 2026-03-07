@@ -12,6 +12,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"controller/state"
 )
 
 type PolicySnapshot struct {
@@ -118,7 +120,7 @@ func normalizeSnapshot(snap PolicySnapshot) PolicySnapshot {
 
 func lookupConnectorNetwork(db *sql.DB, connectorID string) (string, error) {
 	var networkID sql.NullString
-	if err := db.QueryRow(`SELECT remote_network_id FROM connectors WHERE id = ?`, connectorID).Scan(&networkID); err != nil {
+	if err := db.QueryRow(state.Rebind(`SELECT remote_network_id FROM connectors WHERE id = ?`), connectorID).Scan(&networkID); err != nil {
 		return "", err
 	}
 	if !networkID.Valid || strings.TrimSpace(networkID.String) == "" {
@@ -128,7 +130,7 @@ func lookupConnectorNetwork(db *sql.DB, connectorID string) (string, error) {
 }
 
 func policyResources(db *sql.DB, remoteNetworkID string) ([]PolicyResource, error) {
-	rows, err := db.Query(`SELECT id, type, address, protocol, port_from, port_to FROM resources WHERE remote_network_id = ? ORDER BY id ASC`, remoteNetworkID)
+	rows, err := db.Query(state.Rebind(`SELECT id, type, address, protocol, port_from, port_to FROM resources WHERE remote_network_id = ? ORDER BY id ASC`), remoteNetworkID)
 	if err != nil {
 		return nil, err
 	}
@@ -205,7 +207,7 @@ func policyHash(resources []PolicyResource) string {
 func policyVersion(db *sql.DB, connectorID, policyHash, compiledAt string) int {
 	var version int
 	var existingHash sql.NullString
-	_ = db.QueryRow(`SELECT version, policy_hash FROM connector_policy_versions WHERE connector_id = ?`, connectorID).Scan(&version, &existingHash)
+	_ = db.QueryRow(state.Rebind(`SELECT version, policy_hash FROM connector_policy_versions WHERE connector_id = ?`), connectorID).Scan(&version, &existingHash)
 	if version == 0 || !existingHash.Valid || existingHash.String != policyHash {
 		version = version + 1
 	}

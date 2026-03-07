@@ -1,0 +1,103 @@
+package admin
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+)
+
+type contextKey string
+
+const sessionEmailKey contextKey = "session_email"
+
+const sessionCookieName = "ztna_session"
+
+// signSessionJWT creates a signed JWT containing the user's email.
+func (s *Server) signSessionJWT(email string) (string, error) {
+	if len(s.JWTSecret) == 0 {
+		return "", fmt.Errorf("JWT_SECRET not configured")
+	}
+	claims := jwt.MapClaims{
+		"sub": email,
+		"exp": time.Now().Add(24 * time.Hour).Unix(),
+		"iat": time.Now().Unix(),
+	}
+	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return tok.SignedString(s.JWTSecret)
+}
+
+// verifySessionJWT validates a JWT and returns the email claim.
+func (s *Server) verifySessionJWT(tokenStr string) (string, error) {
+	if len(s.JWTSecret) == 0 {
+		return "", fmt.Errorf("JWT_SECRET not configured")
+	}
+	tok, err := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+		}
+		return s.JWTSecret, nil
+	})
+	if err != nil || !tok.Valid {
+		return "", fmt.Errorf("invalid token")
+	}
+	claims, ok := tok.Claims.(jwt.MapClaims)
+	if !ok {
+		return "", fmt.Errorf("invalid claims")
+	}
+	email, ok := claims["sub"].(string)
+	if !ok || email == "" {
+		return "", fmt.Errorf("missing subject")
+	}
+	return email, nil
+}
+
+// setSessionCookie writes the JWT as an http-only session cookie.
+func (s *Server) setSessionCookie(w http.ResponseWriter, token string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookieName,
+		Value:    token,
+		Path:     "/",
+		MaxAge:   86400,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+// clearSessionCookie expires the session cookie.
+func (s *Server) clearSessionCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookieName,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+	})
+}
+
+// sessionFromRequest extracts and verifies the JWT from the session cookie or
+// the Authorization: Bearer header.
+func (s *Server) sessionFromRequest(r *http.Request) (string, error) {
+	if cookie, err := r.Cookie(sessionCookieName); err == nil {
+		return s.verifySessionJWT(cookie.Value)
+	}
+	auth := r.Header.Get("Authorization")
+	if strings.HasPrefix(auth, "Bearer ") {
+		return s.verifySessionJWT(strings.TrimPrefix(auth, "Bearer "))
+	}
+	return "", fmt.Errorf("no session")
+}
+
+// withSessionEmail returns a new context carrying the authenticated email.
+func withSessionEmail(ctx context.Context, email string) context.Context {
+	return context.WithValue(ctx, sessionEmailKey, email)
+}
+
+// sessionEmailFromContext retrieves the email stored by withSessionEmail.
+func sessionEmailFromContext(ctx context.Context) string {
+	v, _ := ctx.Value(sessionEmailKey).(string)
+	return v
+}

@@ -34,7 +34,7 @@ func (s *TokenStore) CreateToken() (string, time.Time, error) {
 	expires := time.Now().UTC().Add(s.ttl)
 	if s.db != nil {
 		_, err := s.db.Exec(
-			`INSERT INTO tokens (token, expires_at) VALUES (?, ?)`,
+			Rebind(`INSERT INTO tokens (token, expires_at) VALUES (?, ?)`),
 			token, expires.Unix(),
 		)
 		if err != nil {
@@ -53,7 +53,7 @@ func (s *TokenStore) ConsumeToken(token, connectorID string) error {
 	var expiresAt int64
 	var consumed int
 	var boundID sql.NullString
-	err := s.db.QueryRow(`SELECT expires_at, consumed, connector_id FROM tokens WHERE token = ?`, token).Scan(&expiresAt, &consumed, &boundID)
+	err := s.db.QueryRow(Rebind(`SELECT expires_at, consumed, connector_id FROM tokens WHERE token = ?`), token).Scan(&expiresAt, &consumed, &boundID)
 	if err == sql.ErrNoRows {
 		return fmt.Errorf("token not found")
 	}
@@ -70,7 +70,7 @@ func (s *TokenStore) ConsumeToken(token, connectorID string) error {
 		}
 		return fmt.Errorf("token already consumed")
 	}
-	_, err = s.db.Exec(`UPDATE tokens SET consumed = 1, connector_id = ? WHERE token = ?`, connectorID, token)
+	_, err = s.db.Exec(Rebind(`UPDATE tokens SET consumed = 1, connector_id = ? WHERE token = ?`), connectorID, token)
 	return err
 }
 
@@ -78,6 +78,6 @@ func (s *TokenStore) DeleteByConnectorID(connectorID string) error {
 	if s.db == nil {
 		return nil
 	}
-	_, err := s.db.Exec(`DELETE FROM tokens WHERE connector_id = ?`, connectorID)
+	_, err := s.db.Exec(Rebind(`DELETE FROM tokens WHERE connector_id = ?`), connectorID)
 	return err
 }

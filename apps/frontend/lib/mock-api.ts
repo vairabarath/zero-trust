@@ -22,12 +22,14 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const url = path.startsWith('http') ? path : `${API_BASE}${path}`;
   console.log(`[mock-api] Request to: ${url}`);
-  
+
+  const authToken = localStorage.getItem('authToken');
   let res: Response;
   try {
     res = await fetch(url, {
       headers: {
         'Content-Type': 'application/json',
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
         ...(options.headers || {}),
       },
       ...options,
@@ -38,6 +40,10 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   }
 
   if (!res.ok) {
+    if (res.status === 401) {
+      localStorage.removeItem('authToken');
+      window.location.href = '/login';
+    }
     const message = await res.text();
     console.error(`[mock-api] Error response (${res.status}): ${message}`);
     throw new Error(message || `Request failed with ${res.status}`);
@@ -337,5 +343,13 @@ export async function removeGroupMember(
 ): Promise<void> {
   await request(`/api/groups/${groupId}/members/${userId}`, {
     method: 'DELETE',
+  });
+}
+
+// API: Invite a user by email
+export async function inviteUser(email: string): Promise<{ status: string; invite_url?: string }> {
+  return request<{ status: string; invite_url?: string }>('/api/users/invite', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
   });
 }

@@ -1,252 +1,278 @@
-# Team Quick Start Guide
+# How To Run (Manual Setup)
 
-## 🎯 For New Team Members
+This guide gets the full ZTNA stack running locally without Docker.
 
-Welcome to the ZTNA project! This guide will get you up and running quickly.
+## Prerequisites
 
-## 📋 Prerequisites
-
-Install these tools before starting:
-
-- **Go** 1.21+ → [Download](https://go.dev/dl/)
-- **Rust** 1.70+ → [Install](https://rustup.rs/)
-- **Node.js** 18+ → [Download](https://nodejs.org/)
-- **Protobuf** → `sudo apt install protobuf-compiler` (Linux)
-
-## 🚀 Quick Setup (5 minutes)
-
-### 1. Clone Repository
-```bash
-git clone https://github.com/vairabarath/zero-trust.git
-cd zero-trust
-```
-
-### 2. Choose Your Component
-
-#### Working on Controller?
-```bash
-cd services/controller
-go mod download
-./setup.sh
-make dev-controller
-```
-
-#### Working on Connector?
-```bash
-cd services/connector
-cargo build
-make dev-connector
-```
-
-#### Working on Tunneler?
-```bash
-cd services/tunneler
-cargo build
-make dev-tunneler
-```
-
-#### Working on Frontend?
-```bash
-cd apps/frontend
-npm install
-make dev-frontend
-```
-
-## 📂 Repository Structure
-
-```
-services/
-  ├── controller/    ← Go backend (CA + API)
-  ├── connector/     ← Rust gateway
-  └── tunneler/      ← Rust client
-
-apps/
-  └── frontend/      ← React UI
-
-shared/
-  ├── proto/         ← Protobuf definitions
-  └── configs/       ← Config examples
-
-docs/                ← Documentation
-scripts/             ← Deployment scripts
-```
-
-## 🔧 Common Commands
-
-### Build
-```bash
-make build-all              # Build everything
-make build-controller       # Build your component
-```
-
-### Run (Development)
-```bash
-make dev-controller         # Run with hot reload
-make dev-connector
-make dev-tunneler
-make dev-frontend
-```
-
-### Test
-```bash
-make test-all               # Test everything
-make test-controller        # Test your component
-```
-
-### Help
-```bash
-make help                   # Show all commands
-```
-
-## 🌿 Git Workflow
-
-### 1. Start New Feature
-```bash
-git checkout develop
-git pull origin develop
-git checkout -b feature/component-description
-```
-
-### 2. Make Changes
-```bash
-# Edit files in your component directory
-# Test locally: make dev-<component>
-```
-
-### 3. Commit
-```bash
-git add .
-git commit -m "feat(component): description"
-```
-
-### 4. Push & Create PR
-```bash
-git push origin feature/component-description
-# Create PR on GitHub to 'develop' branch
-```
-
-## 👥 Component Ownership
-
-| Component | Directory | Tech | Owner |
-|-----------|-----------|------|-------|
-| Controller | `services/controller/` | Go | Member 1 |
-| Connector | `services/connector/` | Rust | Member 2 |
-| Tunneler | `services/tunneler/` | Rust | Member 3 |
-| Frontend | `apps/frontend/` | React | Member 4 |
-
-## 🔗 Integration Points
-
-### When to Coordinate
-
-1. **Protobuf Changes** → Affects all services
-   - Location: `shared/proto/`
-   - Notify team before changing
-
-2. **API Changes** → Affects frontend
-   - Document in `docs/api-reference.md`
-   - Update frontend accordingly
-
-3. **Environment Variables** → Affects deployment
-   - Update `shared/configs/.env.example`
-   - Document in component README
-
-## 📝 Commit Message Format
-
-```bash
-feat(controller): add user enrollment endpoint
-fix(connector): resolve connection timeout
-docs(api): update authentication flow
-test(tunneler): add integration tests
-refactor(frontend): improve component structure
-```
-
-## 🐛 Troubleshooting
-
-### Build Fails?
-```bash
-make clean
-make build-<component>
-```
-
-### Dependencies Issue?
-```bash
-# Go
-cd services/controller && go mod tidy
-
-# Rust
-cd services/connector && cargo update
-
-# Node
-cd apps/frontend && npm install
-```
-
-### Can't Find Command?
-```bash
-make help    # Shows all available commands
-```
-
-## 📚 Documentation
-
-- **README.md** - Project overview
-- **docs/development.md** - Detailed development guide
-- **docs/architecture.md** - System architecture
-- **Component READMEs** - Component-specific docs
-
-## 💬 Communication
-
-### Daily Standup (15 min)
-- What did you work on yesterday?
-- What are you working on today?
-- Any blockers?
-
-### Code Reviews
-- Review within 24 hours
-- Be constructive
-- Ask questions
-
-### Questions?
-- Check documentation first
-- Ask in team chat
-- Create GitHub issue
-
-## ✅ Checklist for First Day
-
-- [ ] Clone repository
-- [ ] Install prerequisites
-- [ ] Build your component
-- [ ] Run your component locally
-- [ ] Read `docs/development.md`
-- [ ] Create test branch
-- [ ] Make small change
-- [ ] Create test PR
-
-## 🎓 Learning Resources
-
-### Go (Controller)
-- [Go Tour](https://go.dev/tour/)
-- [Effective Go](https://go.dev/doc/effective_go)
-
-### Rust (Connector/Tunneler)
-- [Rust Book](https://doc.rust-lang.org/book/)
-- [Rust by Example](https://doc.rust-lang.org/rust-by-example/)
-
-### React (Frontend)
-- [React Docs](https://react.dev/)
-- [TypeScript Handbook](https://www.typescriptlang.org/docs/)
-
-### gRPC
-- [gRPC Docs](https://grpc.io/docs/)
-- [Protobuf Guide](https://protobuf.dev/)
-
-## 🚀 Ready to Start?
-
-1. Pick your component
-2. Run `make dev-<component>`
-3. Make a small change
-4. Create your first PR
-5. Get it reviewed
-6. Celebrate! 🎉
+- **Go 1.24+** — [Download](https://go.dev/dl/)
+- **Rust 1.70+** — [Install](https://rustup.rs/)
+- **Node.js 20+** and npm — [Download](https://nodejs.org/)
+- **PostgreSQL 16+** — [Download](https://www.postgresql.org/download/) *(optional — SQLite used if `DATABASE_URL` is empty)*
 
 ---
 
-**Need help? Ask your team! We're here to support each other. 💪**
+## 1. PostgreSQL Setup (optional)
+
+Skip this section if you want to use the SQLite fallback (set `DATABASE_URL=` empty in `.env`).
+
+### Install PostgreSQL
+
+**Ubuntu/Debian:**
+```bash
+sudo apt update && sudo apt install postgresql postgresql-contrib
+sudo systemctl start postgresql && sudo systemctl enable postgresql
+```
+
+**macOS (Homebrew):**
+```bash
+brew install postgresql@16
+brew services start postgresql@16
+```
+
+### Create Database and User
+
+```bash
+sudo -u postgres psql
+```
+
+```sql
+CREATE DATABASE ztna;
+CREATE USER ztnaadmin WITH PASSWORD 'inkztnapass';
+GRANT ALL PRIVILEGES ON DATABASE ztna TO ztnaadmin;
+\q
+```
+
+### Verify Connection
+
+```bash
+psql -h localhost -U ztnaadmin -d ztna
+# \q to exit
+```
+
+> **Shortcut:** `bash scripts/setup-db.sh` does all of the above automatically.
+
+---
+
+## 2. Environment Configuration
+
+All secrets live in `services/controller/.env` (already populated).  
+The frontend reads `apps/frontend/.env`.
+
+### Generate a JWT Secret (if `JWT_SECRET` is empty)
+
+```bash
+openssl rand -hex 32
+# Paste the output into JWT_SECRET in services/controller/.env
+```
+
+### Key values already set in `services/controller/.env`
+
+| Variable | Value |
+|---|---|
+| `DATABASE_URL` | `postgres://ztnaadmin:inkztnapass@localhost:5432/ztna?sslmode=disable` |
+| `DB_USER` | `ztnaadmin` / password `inkztnapass` |
+| `ADMIN_AUTH_TOKEN` | `7f8e91a2b3c4d5e6f7a8b9c0d1e2f3a4` |
+| `GOOGLE_CLIENT_ID` | `60482071733-dfnm857cq…` |
+| `GOOGLE_CLIENT_SECRET` | `GOCSPX-ywuKJnso…` |
+| `ADMIN_LOGIN_EMAILS` | `gztnaadmin1906@gmail.com` |
+| `SMTP_USER` | `gztnaadmin1906@gmail.com` |
+| `SMTP_PASS` | *(Gmail App Password)* |
+| `OAUTH_REDIRECT_URL` | `http://localhost:8081/oauth/callback` |
+| `DASHBOARD_URL` | `http://localhost:5173` |
+
+---
+
+## 3. Controller (Go)
+
+```bash
+# Option A — standard run
+make dev-controller
+
+# Option B — live reload with Air (requires: go install github.com/air-verse/air@latest)
+make dev-controller-air
+
+# Option C — build then run
+make build-controller
+./dist/controller
+```
+
+**Verify:**
+```bash
+# Should return JSON
+curl http://localhost:8081/api/admin/connectors \
+  -H "Authorization: Bearer 7f8e91a2b3c4d5e6f7a8b9c0d1e2f3a4"
+```
+
+---
+
+## 4. Frontend (React + Express BFF)
+
+```bash
+cd apps/frontend
+npm install
+```
+
+The `.env` is already created at `apps/frontend/.env`.
+
+```bash
+make dev-frontend
+# Or:
+cd apps/frontend && npm run dev
+```
+
+This starts:
+- **Vite dev server** → http://localhost:5173
+- **Express BFF** → http://localhost:3001
+
+---
+
+## 5. Access the Application
+
+| URL | Purpose |
+|---|---|
+| http://localhost:5173/login | Login page |
+| http://localhost:5173/dashboard/groups | Dashboard |
+| http://localhost:8081 | Admin API |
+| http://localhost:8081/oauth/login | OAuth entry point |
+| http://localhost:8081/oauth/callback | Google OAuth callback |
+
+### Login Flow
+
+1. Open http://localhost:5173/login
+2. Click **Sign in with Google**
+3. Authenticate with `gztnaadmin1906@gmail.com` (or any email in `ADMIN_LOGIN_EMAILS`)
+4. Redirected to dashboard automatically
+
+---
+
+## 6. Connector (Rust — optional)
+
+```bash
+make dev-connector
+# Or:
+cd services/connector && cargo run
+```
+
+Requires enrollment token from controller:
+```bash
+curl -X POST http://localhost:8081/api/admin/tokens \
+  -H "Authorization: Bearer 7f8e91a2b3c4d5e6f7a8b9c0d1e2f3a4"
+```
+
+---
+
+## 7. Tunneler (Rust — optional)
+
+```bash
+make dev-tunneler
+# Or:
+cd services/tunneler && cargo run
+```
+
+---
+
+## 8. Common Operations
+
+### Send a User Invite
+
+```bash
+curl -X POST http://localhost:8081/api/admin/users/invite \
+  -H "Authorization: Bearer 7f8e91a2b3c4d5e6f7a8b9c0d1e2f3a4" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"user@example.com"}'
+```
+
+When SMTP is not configured, the invite URL is printed in the controller log.
+
+### View Admin Audit Logs
+
+```bash
+curl http://localhost:8081/api/admin/audit-logs \
+  -H "Authorization: Bearer 7f8e91a2b3c4d5e6f7a8b9c0d1e2f3a4"
+```
+
+---
+
+## 9. Recommended Terminal Layout
+
+```
+Terminal 1 — Controller:   make dev-controller-air
+Terminal 2 — Frontend:     make dev-frontend
+Terminal 3 — (optional):   psql -h localhost -U ztnaadmin -d ztna
+```
+
+---
+
+## 10. Troubleshooting
+
+### PostgreSQL: connection refused / auth failed
+
+```bash
+sudo systemctl status postgresql
+psql -h localhost -U ztnaadmin -d ztna
+# If pg_hba.conf rejects local connections:
+sudo nano /etc/postgresql/16/main/pg_hba.conf
+# Ensure: host all all 127.0.0.1/32 md5
+sudo systemctl restart postgresql
+```
+
+### Port already in use
+
+```bash
+sudo lsof -i :8081   # find PID
+kill -9 <PID>
+```
+
+### OAuth callback mismatch
+
+In [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services → Credentials → OAuth 2.0 Client:
+
+Add authorized redirect URI: `http://localhost:8081/oauth/callback`
+
+### Frontend can't reach backend
+
+```bash
+# Verify controller is up
+curl http://localhost:8081/api/admin/connectors \
+  -H "Authorization: Bearer 7f8e91a2b3c4d5e6f7a8b9c0d1e2f3a4"
+
+# Ensure BACKEND_URL in apps/frontend/.env = http://localhost:8081
+# Ensure ADMIN_AUTH_TOKEN matches in both .env files
+```
+
+### SMTP not sending
+
+- Gmail requires 2FA + an [App Password](https://myaccount.google.com/apppasswords)
+- `SMTP_PASS` in `services/controller/.env` must be the app password, not the account password
+
+---
+
+## 11. Build for Production
+
+```bash
+make build-all          # builds controller, connector, tunneler, frontend
+
+# Run production frontend
+cd apps/frontend
+npm run build
+npm start               # Express serves built dist/
+```
+
+---
+
+## Quick Start (TL;DR)
+
+```bash
+# 1. Postgres (if using)
+bash scripts/setup-db.sh
+
+# 2. Start controller
+make dev-controller
+
+# 3. Start frontend (new terminal)
+cd apps/frontend && npm install && npm run dev
+
+# 4. Open browser
+xdg-open http://localhost:5173/login   # Linux
+open http://localhost:5173/login       # macOS
+```
