@@ -137,10 +137,6 @@ pub fn run_config_from_env() -> Result<RunConfig> {
     if connector_id.trim().is_empty() {
         bail!("CONNECTOR_ID is not set");
     }
-    if policy_key_str.trim().is_empty() {
-        bail!("POLICY_SIGNING_KEY is not set");
-    }
-
     let mut enrollment_token = env::var("ENROLLMENT_TOKEN").unwrap_or_default();
     if enrollment_token.trim().is_empty() {
         enrollment_token = read_credential("ENROLLMENT_TOKEN")?.unwrap_or_default();

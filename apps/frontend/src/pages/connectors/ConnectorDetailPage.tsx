@@ -40,13 +40,16 @@ export default function ConnectorDetailPage() {
 
   const INSTALL_COMMAND = useMemo(() => {
     if (!enrollmentToken) return null;
+    const policyKeyLine = policySigningKey
+      ? `  POLICY_SIGNING_KEY="${policySigningKey}" \\\n`
+      : '';
     return (
       `curl -fsSL https://raw.githubusercontent.com/vairabarath/zero-trust/main/scripts/setup.sh | sudo \\\n` +
       `  CONTROLLER_ADDR="${controllerAddr || '127.0.0.1:8443'}" \\\n` +
       `  CONTROLLER_HTTP_ADDR="${controllerHttpAddr || '127.0.0.1:8081'}" \\\n` +
       `  CONNECTOR_ID="${connectorId ?? 'connector-local-01'}" \\\n` +
       `  ENROLLMENT_TOKEN="${enrollmentToken}" \\\n` +
-      `  POLICY_SIGNING_KEY="${policySigningKey || 'YOUR_POLICY_SIGNING_KEY'}" \\\n` +
+      policyKeyLine +
       `  bash`
     );
   }, [enrollmentToken, controllerAddr, controllerHttpAddr, policySigningKey, connectorId]);
@@ -184,15 +187,15 @@ export default function ConnectorDetailPage() {
             </p>
           </div>
           <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="policySigningKey">Policy Signing Key</Label>
+            <Label htmlFor="policySigningKey">Policy Signing Key (Optional)</Label>
             <Input
               id="policySigningKey"
               value={policySigningKey}
               onChange={(e) => setPolicySigningKey(e.target.value)}
-              placeholder="Same as POLICY_SIGNING_KEY (or INTERNAL_API_TOKEN) on the controller"
+              placeholder="Leave empty to derive from mTLS"
             />
             <p className="text-xs text-muted-foreground">
-              Found in your controller's environment as <code>POLICY_SIGNING_KEY</code> or <code>INTERNAL_API_TOKEN</code>.
+              The connector derives the policy key from the mTLS session by default. Only set this if derivation fails.
             </p>
           </div>
         </div>
