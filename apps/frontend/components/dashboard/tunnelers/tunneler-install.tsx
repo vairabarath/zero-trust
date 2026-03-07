@@ -18,6 +18,17 @@ import { createEnrollmentToken, getConnectors } from '@/lib/mock-api';
 import { Connector } from '@/lib/types';
 import { toast } from 'sonner';
 
+function fallbackCopy(text: string) {
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand('copy');
+  document.body.removeChild(textarea);
+}
+
 export function TunnelerInstall({ initialTunnelerId }: { initialTunnelerId?: string }) {
   const [token, setToken] = useState<string>('');
   const [tokenLoading, setTokenLoading] = useState(false);
@@ -90,8 +101,12 @@ export function TunnelerInstall({ initialTunnelerId }: { initialTunnelerId?: str
     );
   }, [connectorAddr, controllerAddr, controllerHttpAddr, token, tunnelerId]);
 
-  const handleCopyCommand = async () => {
-    await navigator.clipboard.writeText(installCommand);
+  const handleCopyCommand = () => {
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(installCommand).catch(() => fallbackCopy(installCommand));
+    } else {
+      fallbackCopy(installCommand);
+    }
     toast.success('Installation command copied to clipboard!');
   };
 

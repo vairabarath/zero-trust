@@ -13,6 +13,25 @@ import { ConnectorLogs } from '@/components/dashboard/connectors/connector-logs'
 import { toast } from 'sonner';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 
+function copyToClipboard(text: string) {
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+  } else {
+    fallbackCopy(text);
+  }
+}
+
+function fallbackCopy(text: string) {
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand('copy');
+  document.body.removeChild(textarea);
+}
+
 interface LogEntry {
   id: number;
   timestamp: string;
@@ -133,7 +152,7 @@ export default function ConnectorDetailPage() {
 
   const handleCopyCommand = () => {
     if (!INSTALL_COMMAND) return;
-    navigator.clipboard.writeText(INSTALL_COMMAND);
+    copyToClipboard(INSTALL_COMMAND);
     toast.success('Installation command copied to clipboard!');
   };
 

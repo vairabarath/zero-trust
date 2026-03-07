@@ -6,11 +6,12 @@ import (
 )
 
 func SaveConnectorToDB(db *sql.DB, rec ConnectorRecord) error {
+	lastSeenAt := rec.LastSeen.Format(time.RFC3339)
 	_, err := db.Exec(
-		`INSERT INTO connectors (id, private_ip, version, last_seen)
-		VALUES (?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET private_ip=excluded.private_ip, version=excluded.version, last_seen=excluded.last_seen`,
-		rec.ID, rec.PrivateIP, rec.Version, rec.LastSeen.Unix(),
+		`INSERT INTO connectors (id, private_ip, version, last_seen, installed, status, last_seen_at)
+		VALUES (?, ?, ?, ?, 1, 'online', ?)
+		ON CONFLICT(id) DO UPDATE SET private_ip=excluded.private_ip, version=excluded.version, last_seen=excluded.last_seen, installed=1, status='online', last_seen_at=excluded.last_seen_at`,
+		rec.ID, rec.PrivateIP, rec.Version, rec.LastSeen.Unix(), lastSeenAt,
 	)
 	return err
 }
