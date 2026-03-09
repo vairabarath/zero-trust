@@ -95,6 +95,7 @@ func initSchemaDialect(db *sql.DB, dialect string) error {
 			hostname TEXT NOT NULL DEFAULT '',
 			private_ip TEXT NOT NULL DEFAULT '',
 			remote_network_id TEXT NOT NULL DEFAULT '',
+			revoked INTEGER NOT NULL DEFAULT 0,
 			last_seen INTEGER NOT NULL DEFAULT 0,
 			last_seen_at TEXT NOT NULL DEFAULT '',
 			installed INTEGER NOT NULL DEFAULT 0,
@@ -236,6 +237,23 @@ func initSchemaDialect(db *sql.DB, dialect string) error {
 			log.Printf("schema init error [%s]: %v (stmt: %.80s…)", dialect, err, s)
 			return err
 		}
+	}
+	// Add new columns for existing databases.
+	if dialect == "postgres" {
+		_, _ = db.Exec(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS revoked INTEGER NOT NULL DEFAULT 0`)
+	} else {
+		_ = execSchemaAlter(db, `ALTER TABLE connectors ADD COLUMN revoked INTEGER NOT NULL DEFAULT 0`)
+	}
+	return nil
+}
+
+func execSchemaAlter(db *sql.DB, stmt string) error {
+	if _, err := db.Exec(stmt); err != nil {
+		msg := strings.ToLower(err.Error())
+		if strings.Contains(msg, "duplicate column") || strings.Contains(msg, "already exists") {
+			return nil
+		}
+		return err
 	}
 	return nil
 }

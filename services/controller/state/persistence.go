@@ -6,11 +6,17 @@ import (
 )
 
 func SaveConnectorToDB(db *sql.DB, rec ConnectorRecord) error {
-	lastSeenAt := rec.LastSeen.Format(time.RFC3339)
+	var revoked int
+	if err := db.QueryRow(Rebind(`SELECT revoked FROM connectors WHERE id = ?`), rec.ID).Scan(&revoked); err == nil {
+		if revoked != 0 {
+			return nil
+		}
+	}
+	lastSeenAt := rec.LastSeen.UTC().Format(time.RFC3339)
 	_, err := db.Exec(
-		Rebind(`INSERT INTO connectors (id, private_ip, version, last_seen, installed, status, last_seen_at)
-		VALUES (?, ?, ?, ?, 1, 'online', ?)
-		ON CONFLICT(id) DO UPDATE SET private_ip=excluded.private_ip, version=excluded.version, last_seen=excluded.last_seen, installed=1, status='online', last_seen_at=excluded.last_seen_at`),
+		Rebind(`INSERT INTO connectors (id, private_ip, version, last_seen, last_seen_at, status, installed)
+		VALUES (?, ?, ?, ?, ?, 'online', 1)
+		ON CONFLICT(id) DO UPDATE SET private_ip=excluded.private_ip, version=excluded.version, last_seen=excluded.last_seen, last_seen_at=excluded.last_seen_at, status='online', installed=1`),
 		rec.ID, rec.PrivateIP, rec.Version, rec.LastSeen.Unix(), lastSeenAt,
 	)
 	return err
@@ -18,6 +24,13 @@ func SaveConnectorToDB(db *sql.DB, rec ConnectorRecord) error {
 
 func DeleteConnectorFromDB(db *sql.DB, id string) error {
 	_, err := db.Exec(Rebind(`DELETE FROM connectors WHERE id = ?`), id)
+	_, _ = db.Exec(Rebind(`DELETE FROM remote_network_connectors WHERE connector_id = ?`), id)
+	return err
+}
+
+func RevokeConnectorInDB(db *sql.DB, id string) error {
+	_, err := db.Exec(Rebind(`UPDATE connectors SET revoked = 1, status = 'offline', installed = 0 WHERE id = ?`), id)
+	_, _ = db.Exec(Rebind(`DELETE FROM remote_network_connectors WHERE connector_id = ?`), id)
 	return err
 }
 

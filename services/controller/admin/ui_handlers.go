@@ -205,6 +205,9 @@ func (s *Server) handleUIUsers(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "failed to create user", http.StatusBadRequest)
 			return
 		}
+		if s.ACLNotify != nil {
+			s.ACLNotify.NotifyPolicyChange()
+		}
 		writeJSON(w, http.StatusOK, uiUser{
 			ID:                  id,
 			Name:                req.Name,
@@ -296,6 +299,9 @@ func (s *Server) handleUIGroups(w http.ResponseWriter, r *http.Request) {
 		if _, err := db.Exec(state.Rebind(`INSERT INTO user_groups (id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`), id, req.Name, req.Description, now, now); err != nil {
 			http.Error(w, "failed to create group", http.StatusBadRequest)
 			return
+		}
+		if s.ACLNotify != nil {
+			s.ACLNotify.NotifyPolicyChange()
 		}
 		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 	default:
@@ -406,9 +412,11 @@ func (s *Server) handleUIGroupsSubroutes(w http.ResponseWriter, r *http.Request)
 				http.Error(w, "failed to update members", http.StatusInternalServerError)
 				return
 			}
-			stmt, _ := tx.Prepare(`INSERT INTO user_group_members (group_id, user_id, added_at) VALUES (?, ?, ?)`)
+			stmt, _ := tx.Prepare(`INSERT INTO user_group_members (group_id, user_id, joined_at) VALUES (?, ?, ?)`)
 			for _, id := range req.MemberIDs {
-				_, _ = stmt.Exec(groupID, id, time.Now().UTC().Unix())
+				if stmt != nil {
+					_, _ = stmt.Exec(groupID, id, time.Now().UTC().Unix())
+				}
 			}
 			if stmt != nil {
 				stmt.Close()
@@ -981,6 +989,19 @@ func (s *Server) handleUIConnectorsSubroutes(w http.ResponseWriter, r *http.Requ
 	parts := strings.Split(path, "/")
 	connectorID := parts[0]
 	if len(parts) == 1 {
+		if r.Method == http.MethodDelete {
+			if s.Reg != nil {
+				s.Reg.Delete(connectorID)
+			}
+			if s.ACLs != nil && s.ACLs.DB() != nil {
+				_ = state.DeleteConnectorFromDB(s.ACLs.DB(), connectorID)
+			}
+			if s.Tokens != nil {
+				_ = s.Tokens.DeleteByConnectorID(connectorID)
+			}
+			writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+			return
+		}
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -1052,6 +1073,25 @@ func (s *Server) handleUIConnectorsSubroutes(w http.ResponseWriter, r *http.Requ
 		})
 		return
 	}
+	if len(parts) >= 2 && parts[1] == "revoke" {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if s.Reg != nil {
+			s.Reg.Delete(connectorID)
+		}
+		if s.ACLs != nil && s.ACLs.DB() != nil {
+			_ = state.RevokeConnectorInDB(s.ACLs.DB(), connectorID)
+		}
+		if s.Tokens != nil {
+			_ = s.Tokens.DeleteByConnectorID(connectorID)
+		}
+		nowISO := isoStringNow()
+		_, _ = db.Exec(`INSERT INTO connector_logs (connector_id, timestamp, message) VALUES (?, ?, ?)`, connectorID, nowISO, "connector revoked")
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+		return
+	}
 	if len(parts) >= 2 && parts[1] == "heartbeat" {
 		switch r.Method {
 		case http.MethodPost:
@@ -1073,6 +1113,13 @@ func (s *Server) handleUIConnectorsSubroutes(w http.ResponseWriter, r *http.Requ
 			var currentVersion int
 			_ = db.QueryRow(state.Rebind(`SELECT version FROM connector_policy_versions WHERE connector_id = ?`), connectorID).Scan(&currentVersion)
 			updateAvailable := req.LastPolicyVersion < currentVersion
+			if req.LastPolicyVersion != currentVersion {
+				msg := fmt.Sprintf("policy version mismatch: connector=%d controller=%d", req.LastPolicyVersion, currentVersion)
+				_, _ = db.Exec(`INSERT INTO connector_logs (connector_id, timestamp, message) VALUES (?, ?, ?)`, connectorID, nowISO, msg)
+				if updateAvailable && s.ACLNotify != nil {
+					s.ACLNotify.NotifyPolicyChange()
+				}
+			}
 			writeJSON(w, http.StatusOK, map[string]interface{}{
 				"update_available": updateAvailable,
 				"current_version":  currentVersion,
@@ -1207,9 +1254,9 @@ func (s *Server) handleUIPolicyCompile(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "connector id required", http.StatusBadRequest)
 		return
 	}
-	var remoteNetworkID string
-	if err := db.QueryRow(state.Rebind(`SELECT remote_network_id FROM connectors WHERE id = ?`), connectorID).Scan(&remoteNetworkID); err != nil {
-		http.Error(w, "connector not found", http.StatusNotFound)
+	remoteNetworkID, err := lookupConnectorNetworkID(db, connectorID)
+	if err != nil {
+		http.Error(w, "connector not found or not assigned to a remote network", http.StatusNotFound)
 		return
 	}
 	resources, err := policyResources(db, remoteNetworkID)
@@ -1245,9 +1292,9 @@ func (s *Server) handleUIPolicyACL(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "connector id required", http.StatusBadRequest)
 		return
 	}
-	var remoteNetworkID string
-	if err := db.QueryRow(state.Rebind(`SELECT remote_network_id FROM connectors WHERE id = ?`), connectorID).Scan(&remoteNetworkID); err != nil {
-		http.Error(w, "connector not found", http.StatusNotFound)
+	remoteNetworkID, err := lookupConnectorNetworkID(db, connectorID)
+	if err != nil {
+		http.Error(w, "connector not found or not assigned to a remote network", http.StatusNotFound)
 		return
 	}
 	resources, err := policyResources(db, remoteNetworkID)
@@ -1284,6 +1331,27 @@ func (s *Server) handleUIPolicyACL(w http.ResponseWriter, r *http.Request) {
 		"acl_entries":    aclEntries,
 		"resource_index": resourceIndex,
 	})
+}
+
+// lookupConnectorNetworkID resolves the remote network ID for a connector.
+// It first checks connectors.remote_network_id and falls back to the
+// remote_network_connectors junction table when the column is empty.
+func lookupConnectorNetworkID(db *sql.DB, connectorID string) (string, error) {
+	var remoteNet sql.NullString
+	if err := db.QueryRow(`SELECT remote_network_id FROM connectors WHERE id = ?`, connectorID).Scan(&remoteNet); err != nil {
+		return "", err
+	}
+	if remoteNet.Valid && remoteNet.String != "" {
+		return remoteNet.String, nil
+	}
+	var assigned sql.NullString
+	if err := db.QueryRow(`SELECT network_id FROM remote_network_connectors WHERE connector_id = ? LIMIT 1`, connectorID).Scan(&assigned); err != nil {
+		return "", err
+	}
+	if assigned.Valid && assigned.String != "" {
+		return assigned.String, nil
+	}
+	return "", sql.ErrNoRows
 }
 
 func (s *Server) uiDB(w http.ResponseWriter) (*sql.DB, bool) {
