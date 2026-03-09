@@ -6,6 +6,12 @@ import (
 )
 
 func SaveConnectorToDB(db *sql.DB, rec ConnectorRecord) error {
+	var revoked int
+	if err := db.QueryRow(`SELECT revoked FROM connectors WHERE id = ?`, rec.ID).Scan(&revoked); err == nil {
+		if revoked != 0 {
+			return nil
+		}
+	}
 	lastSeenAt := rec.LastSeen.UTC().Format(time.RFC3339)
 	_, err := db.Exec(
 		`INSERT INTO connectors (id, private_ip, version, last_seen, last_seen_at, status, installed)
@@ -18,6 +24,12 @@ func SaveConnectorToDB(db *sql.DB, rec ConnectorRecord) error {
 
 func DeleteConnectorFromDB(db *sql.DB, id string) error {
 	_, err := db.Exec(`DELETE FROM connectors WHERE id = ?`, id)
+	_, _ = db.Exec(`DELETE FROM remote_network_connectors WHERE connector_id = ?`, id)
+	return err
+}
+
+func RevokeConnectorInDB(db *sql.DB, id string) error {
+	_, err := db.Exec(`UPDATE connectors SET revoked = 1, status = 'offline', installed = 0 WHERE id = ?`, id)
 	_, _ = db.Exec(`DELETE FROM remote_network_connectors WHERE connector_id = ?`, id)
 	return err
 }

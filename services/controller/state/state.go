@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -38,6 +39,7 @@ func initSchema(db *sql.DB) error {
 			hostname TEXT NOT NULL DEFAULT '',
 			private_ip TEXT NOT NULL DEFAULT '',
 			remote_network_id TEXT NOT NULL DEFAULT '',
+			revoked INTEGER NOT NULL DEFAULT 0,
 			last_seen INTEGER NOT NULL DEFAULT 0,
 			last_seen_at TEXT NOT NULL DEFAULT '',
 			installed INTEGER NOT NULL DEFAULT 0,
@@ -164,6 +166,19 @@ func initSchema(db *sql.DB) error {
 			log.Printf("schema init error: %v (stmt: %.80s…)", err, s)
 			return err
 		}
+	}
+	// Add new columns for existing databases.
+	_ = execSchemaAlter(db, `ALTER TABLE connectors ADD COLUMN revoked INTEGER NOT NULL DEFAULT 0`)
+	return nil
+}
+
+func execSchemaAlter(db *sql.DB, stmt string) error {
+	if _, err := db.Exec(stmt); err != nil {
+		msg := strings.ToLower(err.Error())
+		if strings.Contains(msg, "duplicate column") || strings.Contains(msg, "already exists") {
+			return nil
+		}
+		return err
 	}
 	return nil
 }
