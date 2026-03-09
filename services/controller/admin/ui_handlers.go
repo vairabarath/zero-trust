@@ -205,6 +205,9 @@ func (s *Server) handleUIUsers(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "failed to create user", http.StatusBadRequest)
 			return
 		}
+		if s.ACLNotify != nil {
+			s.ACLNotify.NotifyPolicyChange()
+		}
 		writeJSON(w, http.StatusOK, uiUser{
 			ID:                  id,
 			Name:                req.Name,
@@ -296,6 +299,9 @@ func (s *Server) handleUIGroups(w http.ResponseWriter, r *http.Request) {
 		if _, err := db.Exec(`INSERT INTO user_groups (id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`, id, req.Name, req.Description, now, now); err != nil {
 			http.Error(w, "failed to create group", http.StatusBadRequest)
 			return
+		}
+		if s.ACLNotify != nil {
+			s.ACLNotify.NotifyPolicyChange()
 		}
 		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 	default:
@@ -406,9 +412,11 @@ func (s *Server) handleUIGroupsSubroutes(w http.ResponseWriter, r *http.Request)
 				http.Error(w, "failed to update members", http.StatusInternalServerError)
 				return
 			}
-			stmt, _ := tx.Prepare(`INSERT INTO user_group_members (group_id, user_id, added_at) VALUES (?, ?, ?)`)
+			stmt, _ := tx.Prepare(`INSERT INTO user_group_members (group_id, user_id, joined_at) VALUES (?, ?, ?)`)
 			for _, id := range req.MemberIDs {
-				_, _ = stmt.Exec(groupID, id, time.Now().UTC().Unix())
+				if stmt != nil {
+					_, _ = stmt.Exec(groupID, id, time.Now().UTC().Unix())
+				}
 			}
 			if stmt != nil {
 				stmt.Close()
