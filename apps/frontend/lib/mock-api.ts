@@ -81,6 +81,12 @@ export async function getConnector(connectorId: string) {
   );
 }
 
+export async function revokeConnector(connectorId: string): Promise<void> {
+  await request(`/api/connectors/${encodeURIComponent(connectorId)}/revoke`, {
+    method: 'POST',
+  });
+}
+
 // API: Get all remote networks
 export async function getRemoteNetworks(): Promise<RemoteNetwork[]> {
   return request<RemoteNetwork[]>('/api/remote-networks');

@@ -1065,6 +1065,25 @@ func (s *Server) handleUIConnectorsSubroutes(w http.ResponseWriter, r *http.Requ
 		})
 		return
 	}
+	if len(parts) >= 2 && parts[1] == "revoke" {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if s.Reg != nil {
+			s.Reg.Delete(connectorID)
+		}
+		if s.ACLs != nil && s.ACLs.DB() != nil {
+			_ = state.RevokeConnectorInDB(s.ACLs.DB(), connectorID)
+		}
+		if s.Tokens != nil {
+			_ = s.Tokens.DeleteByConnectorID(connectorID)
+		}
+		nowISO := isoStringNow()
+		_, _ = db.Exec(`INSERT INTO connector_logs (connector_id, timestamp, message) VALUES (?, ?, ?)`, connectorID, nowISO, "connector revoked")
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+		return
+	}
 	if len(parts) >= 2 && parts[1] == "heartbeat" {
 		switch r.Method {
 		case http.MethodPost:

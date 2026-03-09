@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Link } from 'react-router-dom';
-import { createEnrollmentToken, getConnector, simulateConnectorHeartbeat } from '@/lib/mock-api';
+import { createEnrollmentToken, getConnector, revokeConnector, simulateConnectorHeartbeat } from '@/lib/mock-api';
 import { Connector, RemoteNetwork } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -144,10 +144,15 @@ export default function ConnectorDetailPage() {
     return () => clearInterval(interval);
   }, [connector?.installed, connectorId]);
 
-  const handleRevoke = () => {
-    toast.warning('This is a placeholder action.', {
-      description: `In a real application, this would revoke the connector's keys.`,
-    });
+  const handleRevoke = async () => {
+    if (!connectorId) return;
+    try {
+      await revokeConnector(connectorId);
+      toast.success('Connector revoked.');
+      loadConnectorData({ silent: true });
+    } catch (error) {
+      toast.error('Failed to revoke connector.');
+    }
   };
 
   const handleCopyCommand = () => {
