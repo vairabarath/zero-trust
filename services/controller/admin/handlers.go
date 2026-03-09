@@ -1,13 +1,17 @@
 package admin
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
+	"controller/mailer"
 	"controller/state"
+
+	"golang.org/x/oauth2"
 )
 
 type Server struct {
@@ -22,6 +26,24 @@ type Server struct {
 	AdminAuthToken    string
 	InternalAuthToken string
 	CACertPEM         []byte
+
+	// OAuth + JWT session
+	OAuthConfig      *oauth2.Config
+	JWTSecret        []byte
+	AdminLoginEmails map[string]struct{}
+	DashboardURL     string
+	InviteBaseURL    string
+
+	// SMTP mailer (nil = disabled)
+	Mailer *mailer.Mailer
+}
+
+// db returns the underlying *sql.DB via the ACLStore, or nil.
+func (s *Server) db() *sql.DB {
+	if s.ACLs != nil {
+		return s.ACLs.DB()
+	}
+	return nil
 }
 
 func (s *Server) RegisterRoutes(mux *http.ServeMux) {
@@ -61,12 +83,21 @@ func (s *Server) adminAuth(next http.Handler) http.Handler {
 			http.Error(w, "admin auth not configured", http.StatusServiceUnavailable)
 			return
 		}
+		// Accept Bearer ADMIN_AUTH_TOKEN (existing BFF flow).
 		auth := r.Header.Get("Authorization")
-		if auth != "Bearer "+s.AdminAuthToken {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
+		if auth == "Bearer "+s.AdminAuthToken {
+			next.ServeHTTP(w, r)
 			return
 		}
-		next.ServeHTTP(w, r)
+		// Accept valid JWT session (OAuth browser flow).
+		if len(s.JWTSecret) > 0 {
+			if email, err := s.sessionFromRequest(r); err == nil {
+				ctx := withSessionEmail(r.Context(), email)
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
+		}
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
 	})
 }
 

@@ -2,6 +2,18 @@ package admin
 
 import "net/http"
 
+func (s *Server) RegisterOAuthRoutes(mux *http.ServeMux) {
+	// OAuth login / callback / logout — no auth required (they establish auth).
+	mux.Handle("/oauth/google/login", withCORS(http.HandlerFunc(s.handleOAuthLogin)))
+	mux.Handle("/oauth/google/callback", withCORS(http.HandlerFunc(s.handleOAuthCallback)))
+	mux.Handle("/oauth/logout", withCORS(http.HandlerFunc(s.handleOAuthLogout)))
+	// Invite acceptance page — public (token validates itself).
+	mux.Handle("/invite", withCORS(http.HandlerFunc(s.handleInviteAccept)))
+	// Invite send + admin audit logs — require admin auth.
+	mux.Handle("/api/admin/users/invite", withCORS(s.adminAuth(http.HandlerFunc(s.handleInviteUser))))
+	mux.Handle("/api/admin/audit-logs", withCORS(s.adminAuth(http.HandlerFunc(s.handleAdminAuditLogs))))
+}
+
 func (s *Server) RegisterUIRoutes(mux *http.ServeMux) {
 	mux.Handle("/api/users", withCORS(http.HandlerFunc(s.handleUIUsers)))
 	mux.Handle("/api/groups", withCORS(http.HandlerFunc(s.handleUIGroups)))
