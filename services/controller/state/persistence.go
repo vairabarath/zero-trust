@@ -6,17 +6,19 @@ import (
 )
 
 func SaveConnectorToDB(db *sql.DB, rec ConnectorRecord) error {
+	lastSeenAt := rec.LastSeen.UTC().Format(time.RFC3339)
 	_, err := db.Exec(
-		`INSERT INTO connectors (id, private_ip, version, last_seen)
-		VALUES (?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET private_ip=excluded.private_ip, version=excluded.version, last_seen=excluded.last_seen`,
-		rec.ID, rec.PrivateIP, rec.Version, rec.LastSeen.Unix(),
+		`INSERT INTO connectors (id, private_ip, version, last_seen, last_seen_at, status, installed)
+		VALUES (?, ?, ?, ?, ?, 'online', 1)
+		ON CONFLICT(id) DO UPDATE SET private_ip=excluded.private_ip, version=excluded.version, last_seen=excluded.last_seen, last_seen_at=excluded.last_seen_at, status='online', installed=1`,
+		rec.ID, rec.PrivateIP, rec.Version, rec.LastSeen.Unix(), lastSeenAt,
 	)
 	return err
 }
 
 func DeleteConnectorFromDB(db *sql.DB, id string) error {
 	_, err := db.Exec(`DELETE FROM connectors WHERE id = ?`, id)
+	_, _ = db.Exec(`DELETE FROM remote_network_connectors WHERE connector_id = ?`, id)
 	return err
 }
 
