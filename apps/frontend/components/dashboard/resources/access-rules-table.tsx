@@ -82,9 +82,10 @@ export function AccessRulesTable({
   }, [accessRules]);
 
   const formatGroups = useCallback(
-    (groupIds: string[]) => {
-      if (groupIds.length === 0) return 'No groups';
-      const names = groupIds.map((id) => groupMap[id] || id);
+    (groupIds?: string[]) => {
+      const ids = Array.isArray(groupIds) ? groupIds : [];
+      if (ids.length === 0) return 'No groups';
+      const names = ids.map((id) => groupMap[id] || id);
       return names.join(', ');
     },
     [groupMap]
