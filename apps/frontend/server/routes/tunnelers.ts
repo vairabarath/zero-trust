@@ -28,4 +28,17 @@ router.get('/', async (_req: Request, res: Response) => {
   }
 })
 
+// DELETE /api/tunnelers/:tunneledId
+router.delete('/:tunneledId', async (req: Request, res: Response) => {
+  try {
+    const { tunneledId } = req.params
+    const result = await proxyToBackend(`/api/admin/tunnelers/${tunneledId}`, {
+      method: 'DELETE',
+    })
+    res.json(result)
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message })
+  }
+})
+
 export default router

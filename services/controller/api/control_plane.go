@@ -99,6 +99,25 @@ func (s *ControlPlaneServer) Connect(stream controllerpb.ControlPlane_ConnectSer
 				}
 			}
 			log.Printf("heartbeat: connector_id=%s private_ip=%s status=%s", msg.GetConnectorId(), msg.GetPrivateIp(), msg.GetStatus())
+
+			// Connector embeds tunneler statuses in the heartbeat payload.
+			if s.tunnelerStatus != nil && len(msg.GetPayload()) > 0 {
+				var tunnelers []struct {
+					TunnelerID string `json:"tunneler_id"`
+					Status     string `json:"status"`
+				}
+				if err := json.Unmarshal(msg.GetPayload(), &tunnelers); err == nil {
+					for _, t := range tunnelers {
+						s.tunnelerStatus.Record(t.TunnelerID, "", msg.GetConnectorId())
+						log.Printf("tunneler heartbeat: tunneler_id=%s connector_id=%s status=%s", t.TunnelerID, msg.GetConnectorId(), t.Status)
+						if s.acls != nil && s.acls.DB() != nil {
+							if rec, ok := s.tunnelerStatus.Get(t.TunnelerID); ok {
+								_ = state.SaveTunnelerToDB(s.acls.DB(), rec)
+							}
+						}
+					}
+				}
+			}
 		}
 		if msg.GetType() == "tunneler_heartbeat" && s.tunnelerStatus != nil {
 			var payload struct {

@@ -74,6 +74,12 @@ func (r *TunnelerStatusRegistry) Get(tunnelerID string) (TunnelerStatusRecord, b
 	return rec, ok
 }
 
+func (r *TunnelerStatusRegistry) Delete(tunnelerID string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.records, tunnelerID)
+}
+
 func (r *TunnelerStatusRegistry) List() []TunnelerStatusRecord {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
