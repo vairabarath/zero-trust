@@ -320,20 +320,10 @@ export async function createAccessRule(
   resourceId: string,
   data: { name: string; groupIds: string[]; enabled: boolean }
 ): Promise<AccessRule> {
-  await request('/api/access-rules', {
+  return request<AccessRule>('/api/access-rules', {
     method: 'POST',
     body: JSON.stringify({ resourceId, ...data }),
   });
-  const now = new Date().toISOString();
-  return {
-    id: `rule_${resourceId}_${data.groupIds.join('_')}`,
-    name: data.name,
-    resourceId,
-    allowedGroups: data.groupIds,
-    enabled: data.enabled,
-    createdAt: now,
-    updatedAt: now,
-  };
 }
 
 // API: Delete access rule
