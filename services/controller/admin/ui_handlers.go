@@ -863,7 +863,7 @@ func (s *Server) handleUIRemoteNetworksSubroutes(w http.ResponseWriter, r *http.
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	row := db.QueryRow(`
+	row := db.QueryRow(state.Rebind(`
 		SELECT n.id, n.name, n.location,
 			CAST(n.created_at AS TEXT) as created_at,
 			CAST(n.updated_at AS TEXT) as updated_at,
@@ -871,7 +871,7 @@ func (s *Server) handleUIRemoteNetworksSubroutes(w http.ResponseWriter, r *http.
 			(SELECT COUNT(*) FROM connectors c WHERE c.remote_network_id = n.id AND c.status = 'online') AS online_connector_count,
 			(SELECT COUNT(*) FROM resources r WHERE r.remote_network_id = n.id) AS resource_count
 		FROM remote_networks n
-		WHERE n.id = ?`, networkID)
+		WHERE n.id = ?`), networkID)
 	var id, name, location string
 	var created, updated sql.NullString
 	var connCount, onlineCount, resCount int
@@ -1338,14 +1338,14 @@ func (s *Server) handleUIPolicyACL(w http.ResponseWriter, r *http.Request) {
 // remote_network_connectors junction table when the column is empty.
 func lookupConnectorNetworkID(db *sql.DB, connectorID string) (string, error) {
 	var remoteNet sql.NullString
-	if err := db.QueryRow(`SELECT remote_network_id FROM connectors WHERE id = ?`, connectorID).Scan(&remoteNet); err != nil {
+	if err := db.QueryRow(state.Rebind(`SELECT remote_network_id FROM connectors WHERE id = ?`), connectorID).Scan(&remoteNet); err != nil {
 		return "", err
 	}
 	if remoteNet.Valid && remoteNet.String != "" {
 		return remoteNet.String, nil
 	}
 	var assigned sql.NullString
-	if err := db.QueryRow(`SELECT network_id FROM remote_network_connectors WHERE connector_id = ? LIMIT 1`, connectorID).Scan(&assigned); err != nil {
+	if err := db.QueryRow(state.Rebind(`SELECT network_id FROM remote_network_connectors WHERE connector_id = ? LIMIT 1`), connectorID).Scan(&assigned); err != nil {
 		return "", err
 	}
 	if assigned.Valid && assigned.String != "" {
