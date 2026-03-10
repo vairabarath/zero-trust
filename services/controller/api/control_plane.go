@@ -70,9 +70,6 @@ func (s *ControlPlaneServer) Connect(stream controllerpb.ControlPlane_ConnectSer
 		}
 	}
 	signingKey := derivePolicyKey(stream.Context(), connectorID)
-	if len(signingKey) == 0 && len(s.signingKey) > 0 {
-		signingKey = append([]byte(nil), s.signingKey...)
-	}
 	if len(signingKey) == 0 {
 		log.Printf("policy key derivation failed for connector %s", connectorID)
 	}
