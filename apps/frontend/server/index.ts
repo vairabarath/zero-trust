@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express'
 import cors from 'cors'
 import compression from 'compression'
 import path from 'path'
+import fs from 'fs'
 import { BACKEND_URL } from '../lib/proxy'
 
 import groupsRouter from './routes/groups'
@@ -18,6 +19,23 @@ import policyRouter from './routes/policy'
 import auditLogsRouter from './routes/audit-logs'
 
 const app = express()
+
+// Load apps/frontend/.env for the BFF server (Vite doesn't load it automatically for Node).
+const envPath = path.resolve(__dirname, '../.env')
+if (fs.existsSync(envPath)) {
+  const contents = fs.readFileSync(envPath, 'utf8')
+  contents.split(/\r?\n/).forEach((line) => {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('#')) return
+    const idx = trimmed.indexOf('=')
+    if (idx === -1) return
+    const key = trimmed.slice(0, idx).trim()
+    const value = trimmed.slice(idx + 1).trim()
+    if (key && process.env[key] === undefined) {
+      process.env[key] = value
+    }
+  })
+}
 
 app.use(cors())
 app.use(compression())
