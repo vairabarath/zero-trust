@@ -2,8 +2,7 @@ import express, { Request, Response } from 'express'
 import cors from 'cors'
 import compression from 'compression'
 import path from 'path'
-import fs from 'fs'
-import { BACKEND_URL } from '../lib/proxy'
+import { getBackendUrl } from '../lib/proxy'
 
 import groupsRouter from './routes/groups'
 import usersRouter from './routes/users'
@@ -20,23 +19,6 @@ import auditLogsRouter from './routes/audit-logs'
 import discoveryRouter from './routes/discovery'
 
 const app = express()
-
-// Load apps/frontend/.env for the BFF server (Vite doesn't load it automatically for Node).
-const envPath = path.resolve(__dirname, '../.env')
-if (fs.existsSync(envPath)) {
-  const contents = fs.readFileSync(envPath, 'utf8')
-  contents.split(/\r?\n/).forEach((line) => {
-    const trimmed = line.trim()
-    if (!trimmed || trimmed.startsWith('#')) return
-    const idx = trimmed.indexOf('=')
-    if (idx === -1) return
-    const key = trimmed.slice(0, idx).trim()
-    const value = trimmed.slice(idx + 1).trim()
-    if (key && process.env[key] === undefined) {
-      process.env[key] = value
-    }
-  })
-}
 
 app.use(cors())
 app.use(compression())
@@ -59,7 +41,7 @@ app.use('/api/discovery', discoveryRouter)
 // POST /api/auth/logout — forwards to controller OAuth logout, then signals client to clear token
 app.post('/api/auth/logout', async (_req: Request, res: Response) => {
   try {
-    await fetch(`${BACKEND_URL}/oauth/logout`, { method: 'POST' })
+    await fetch(`${getBackendUrl()}/oauth/logout`, { method: 'POST' })
   } catch {
     // Best-effort
   }
