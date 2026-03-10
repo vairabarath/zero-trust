@@ -79,6 +79,7 @@ pub async fn server_loop(
     acl: Arc<PolicyCache>,
     send_ch: mpsc::Sender<ControlMessage>,
     connector_id: String,
+    tunneler_registry: Arc<crate::TunnelerRegistry>,
 ) {
     let mut backoff = std::time::Duration::from_secs(2);
     loop {
@@ -91,6 +92,7 @@ pub async fn server_loop(
             acl.clone(),
             send_ch.clone(),
             connector_id.clone(),
+            tunneler_registry.clone(),
         )
         .await
         {
@@ -115,6 +117,7 @@ async fn run_server(
     acl: Arc<PolicyCache>,
     send_ch: mpsc::Sender<ControlMessage>,
     connector_id: String,
+    tunneler_registry: Arc<crate::TunnelerRegistry>,
 ) -> Result<()> {
     let server_tls = crate::tls::server_cfg::build_server_tls(store, ca_pem, trust_domain)?;
     let tls_acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(server_tls));
@@ -128,6 +131,7 @@ async fn run_server(
         allowlist,
         acl,
         trust_domain: trust_domain.to_string(),
+        tunneler_registry,
     };
 
     info!("connector server listening on {}", listen_addr);

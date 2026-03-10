@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { Link } from 'react-router-dom';
-import { createEnrollmentToken, getConnector, simulateConnectorHeartbeat } from '@/lib/mock-api';
+import { createEnrollmentToken, deleteConnector, getConnector, simulateConnectorHeartbeat } from '@/lib/mock-api';
 import { Connector, RemoteNetwork } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -40,6 +40,7 @@ interface LogEntry {
 
 export default function ConnectorDetailPage() {
   const { connectorId } = useParams();
+  const navigate = useNavigate();
   const [connector, setConnector] = useState<Connector | null>(null);
   const [network, setNetwork] = useState<RemoteNetwork | undefined>(undefined);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -144,10 +145,21 @@ export default function ConnectorDetailPage() {
     return () => clearInterval(interval);
   }, [connector?.installed, connectorId]);
 
-  const handleRevoke = () => {
-    toast.warning('This is a placeholder action.', {
-      description: `In a real application, this would revoke the connector's keys.`,
-    });
+  const [isRevoking, setIsRevoking] = useState(false);
+
+  const handleRevoke = async () => {
+    if (!connectorId) return;
+    if (!window.confirm(`Revoke connector "${connector?.name ?? connectorId}"? This will remove it from the controller.`)) return;
+    setIsRevoking(true);
+    try {
+      await deleteConnector(connectorId);
+      toast.success('Connector revoked successfully.');
+      navigate('/dashboard/connectors');
+    } catch (error) {
+      toast.error('Failed to revoke connector. Check that the backend is running.');
+    } finally {
+      setIsRevoking(false);
+    }
   };
 
   const handleCopyCommand = () => {
@@ -339,8 +351,8 @@ export default function ConnectorDetailPage() {
               Simulate Heartbeat / Go Online
             </Button>
           )}
-          <Button variant="destructive" className="gap-2" onClick={handleRevoke}>
-            <AlertTriangle className="h-4 w-4" />
+          <Button variant="destructive" className="gap-2" onClick={handleRevoke} disabled={isRevoking}>
+            {isRevoking ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
             Revoke
           </Button>
         </div>

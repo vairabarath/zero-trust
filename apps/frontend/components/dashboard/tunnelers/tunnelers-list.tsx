@@ -1,7 +1,9 @@
 'use client';
 
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Tunneler } from '@/lib/types';
+import { deleteTunneler } from '@/lib/mock-api';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -12,13 +14,31 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { ArrowRight, Cable, CircleDotDashed, CircleDot } from 'lucide-react';
+import { ArrowRight, Cable, CircleDotDashed, CircleDot, AlertTriangle, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface TunnelersListProps {
   tunnelers: Tunneler[];
+  onRevoked?: (id: string) => void;
 }
 
-export function TunnelersList({ tunnelers }: TunnelersListProps) {
+export function TunnelersList({ tunnelers, onRevoked }: TunnelersListProps) {
+  const [revokingId, setRevokingId] = useState<string | null>(null);
+
+  const handleRevoke = async (tunneler: Tunneler) => {
+    if (!window.confirm(`Revoke tunneler "${tunneler.name}"? This will remove it from the controller.`)) return;
+    setRevokingId(tunneler.id);
+    try {
+      await deleteTunneler(tunneler.id);
+      toast.success(`Tunneler "${tunneler.name}" revoked.`);
+      onRevoked?.(tunneler.id);
+    } catch {
+      toast.error('Failed to revoke tunneler. Check that the backend is running.');
+    } finally {
+      setRevokingId(null);
+    }
+  };
+
   if (tunnelers.length === 0) {
     return (
       <div className="rounded-lg border border-dashed p-12 text-center">
@@ -71,7 +91,7 @@ export function TunnelersList({ tunnelers }: TunnelersListProps) {
                 {tunneler.remoteNetworkId ? (
                   <Link to={`/dashboard/remote-networks/${tunneler.remoteNetworkId}`}>
                     <Button variant="link" size="sm" className="px-0">
-                      {tunneler.remoteNetworkId} {/* TODO: Replace with network name */}
+                      {tunneler.remoteNetworkId}
                     </Button>
                   </Link>
                 ) : (
@@ -79,16 +99,28 @@ export function TunnelersList({ tunnelers }: TunnelersListProps) {
                 )}
               </TableCell>
               <TableCell className="text-right">
-                <Link to={`/dashboard/tunnelers/${tunneler.id}`}>
+                <div className="flex items-center justify-end gap-2">
+                  <Link to={`/dashboard/tunnelers/${tunneler.id}`}>
+                    <Button variant="ghost" size="sm" className="gap-2">
+                      Manage
+                      <ArrowRight className="h-4 w-4" />
+                    </Button>
+                  </Link>
                   <Button
-                    variant="ghost"
+                    variant="destructive"
                     size="sm"
-                    className="gap-2"
+                    className="gap-1"
+                    disabled={revokingId === tunneler.id}
+                    onClick={() => handleRevoke(tunneler)}
                   >
-                    Manage
-                    <ArrowRight className="h-4 w-4" />
+                    {revokingId === tunneler.id ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <AlertTriangle className="h-3 w-3" />
+                    )}
+                    Revoke
                   </Button>
-                </Link>
+                </div>
               </TableCell>
             </TableRow>
           ))}

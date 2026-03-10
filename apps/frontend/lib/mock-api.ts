@@ -103,6 +103,11 @@ export async function getTunnelers(): Promise<Tunneler[]> {
   return request<Tunneler[]>('/api/tunnelers');
 }
 
+// API: Delete (revoke) a tunneler
+export async function deleteTunneler(tunneledId: string): Promise<void> {
+  await request(`/api/tunnelers/${tunneledId}`, { method: 'DELETE' });
+}
+
 // API: Get all subjects (Users, Groups, Service Accounts)
 export async function getSubjects(): Promise<Subject[]> {
   return request<Subject[]>('/api/subjects');
@@ -249,6 +254,11 @@ export async function updateResource(
     method: 'PUT',
     body: JSON.stringify(data),
   });
+}
+
+// API: Delete (revoke) a connector
+export async function deleteConnector(connectorId: string): Promise<void> {
+  await request(`/api/connectors/${connectorId}`, { method: 'DELETE' });
 }
 
 // API: Add a new connector

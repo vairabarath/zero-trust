@@ -17,11 +17,53 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use enroll::pb::ControlMessage;
 use policy::{PolicyCache, PolicySnapshot};
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime};
 use tls::cert_store::CertStore;
 use tokio::sync::mpsc;
 use tracing::{error, info, warn};
+
+/// Tracks the last-known status of each connected tunneler.
+/// Updated by the tunneler-facing server; read by the controller heartbeat.
+#[derive(Clone)]
+pub struct TunnelerRegistry {
+    inner: Arc<RwLock<HashMap<String, String>>>,
+}
+
+impl TunnelerRegistry {
+    pub fn new() -> Self {
+        Self {
+            inner: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    pub fn update(&self, tunneler_id: &str, status: &str) {
+        if let Ok(mut map) = self.inner.write() {
+            map.insert(tunneler_id.to_string(), status.to_string());
+        }
+    }
+
+    pub fn snapshot(&self) -> Vec<TunnelerStatusEntry> {
+        self.inner
+            .read()
+            .map(|map| {
+                map.iter()
+                    .map(|(id, st)| TunnelerStatusEntry {
+                        tunneler_id: id.clone(),
+                        status: st.clone(),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+}
+
+#[derive(serde::Serialize)]
+pub struct TunnelerStatusEntry {
+    pub tunneler_id: String,
+    pub status: String,
+}
 
 #[derive(Parser)]
 #[command(name = "grpcconnector2", about = "Arise connector (Rust)")]
@@ -127,6 +169,7 @@ async fn cmd_run(systemd_watchdog: bool) -> Result<()> {
     let allowlist = Arc::new(TunnelerAllowlist::new());
     let acl = Arc::new(PolicyCache::new(cfg.policy_key.clone(), cfg.stale_grace));
     let (send_ch, recv_ch) = mpsc::channel::<ControlMessage>(16);
+    let tunneler_registry = Arc::new(TunnelerRegistry::new());
 
     // Start tunneler-facing gRPC server
     tokio::spawn(server::server_loop(
@@ -138,6 +181,7 @@ async fn cmd_run(systemd_watchdog: bool) -> Result<()> {
         acl.clone(),
         send_ch.clone(),
         cfg.connector_id.clone(),
+        tunneler_registry.clone(),
     ));
 
     // Start certificate renewal loop
@@ -161,6 +205,7 @@ async fn cmd_run(systemd_watchdog: bool) -> Result<()> {
         acl.clone(),
         send_ch,
         recv_ch,
+        tunneler_registry,
     )
     .await;
 
@@ -180,6 +225,7 @@ async fn control_plane_loop(
     acl: Arc<PolicyCache>,
     send_ch: mpsc::Sender<ControlMessage>,
     mut recv_ch: mpsc::Receiver<ControlMessage>,
+    tunneler_registry: Arc<TunnelerRegistry>,
 ) {
     let mut backoff = Duration::from_secs(2);
     loop {
@@ -194,6 +240,7 @@ async fn control_plane_loop(
             &acl,
             &send_ch,
             &mut recv_ch,
+            &tunneler_registry,
         )
         .await
         {
@@ -220,6 +267,7 @@ async fn connect_control_plane(
     acl: &Arc<PolicyCache>,
     _send_ch: &mpsc::Sender<ControlMessage>,
     recv_ch: &mut mpsc::Receiver<ControlMessage>,
+    tunneler_registry: &Arc<TunnelerRegistry>,
 ) -> Result<()> {
     let policy_cb = {
         let acl = acl.clone();
@@ -295,11 +343,14 @@ async fn connect_control_plane(
                 stream_tx.send(out_msg).await?;
             }
             _ = heartbeat.tick() => {
+                let tunnelers = tunneler_registry.snapshot();
+                let payload = serde_json::to_vec(&tunnelers).unwrap_or_default();
                 stream_tx.send(ControlMessage {
                     r#type: "heartbeat".to_string(),
                     connector_id: connector_id.to_string(),
                     private_ip: private_ip.to_string(),
                     status: "ONLINE".to_string(),
+                    payload,
                     ..Default::default()
                 }).await?;
             }

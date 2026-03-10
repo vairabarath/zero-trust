@@ -10,7 +10,7 @@ use clap::{Parser, Subcommand};
 use tracing::error;
 
 #[derive(Parser)]
-#[command(name = "grpctunneler2", about = "Arise tunneler (Rust)")]
+#[command(name = "tunneler2", about = "Arise tunneler (Rust)")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,

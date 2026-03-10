@@ -51,7 +51,10 @@ export default function TunnelersPage() {
       </div>
 
       {/* Tunnelers List */}
-      <TunnelersList tunnelers={tunnelers} />
+      <TunnelersList
+        tunnelers={tunnelers}
+        onRevoked={(id) => setTunnelers((prev) => prev.filter((t) => t.id !== id))}
+      />
     </div>
   );
 }
