@@ -4,54 +4,30 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
-	"os"
-	"path/filepath"
 	"strings"
 
 	_ "github.com/lib/pq"
-	_ "github.com/mattn/go-sqlite3"
 )
 
-// Open returns a *sql.DB connected to PostgreSQL if databaseURL is non-empty,
-// otherwise falls back to SQLite at sqlitePath.
+// Open returns a *sql.DB connected to PostgreSQL. SQLite is not supported.
 func Open(databaseURL, sqlitePath string) (*sql.DB, error) {
-	if databaseURL != "" {
-		DBDriver = "postgres"
-		db, err := sql.Open("postgres", databaseURL)
-		if err != nil {
-			return nil, err
-		}
-		if err := db.Ping(); err != nil {
-			db.Close()
-			return nil, fmt.Errorf("postgres ping: %w", err)
-		}
-		if err := initSchemaDialect(db, "postgres"); err != nil {
-			db.Close()
-			return nil, err
-		}
-		log.Println("state: connected to PostgreSQL")
-		return db, nil
+	if databaseURL == "" {
+		return nil, fmt.Errorf("DATABASE_URL is required (SQLite disabled)")
 	}
-	DBDriver = "sqlite"
-	return openSQLiteDB(sqlitePath)
-}
-
-func openSQLiteDB(path string) (*sql.DB, error) {
-	if path == "" {
-		path = "controller.db"
-	}
-	dir := filepath.Dir(path)
-	if dir != "" && dir != "." {
-		_ = os.MkdirAll(dir, 0o755)
-	}
-	db, err := sql.Open("sqlite3", path+"?_journal_mode=WAL&_busy_timeout=5000")
+	DBDriver = "postgres"
+	db, err := sql.Open("postgres", databaseURL)
 	if err != nil {
 		return nil, err
 	}
-	if err := initSchemaDialect(db, "sqlite"); err != nil {
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("postgres ping: %w", err)
+	}
+	if err := initSchemaDialect(db, "postgres"); err != nil {
 		db.Close()
 		return nil, err
 	}
+	log.Println("state: connected to PostgreSQL")
 	return db, nil
 }
 
@@ -241,19 +217,6 @@ func initSchemaDialect(db *sql.DB, dialect string) error {
 	// Add new columns for existing databases.
 	if dialect == "postgres" {
 		_, _ = db.Exec(`ALTER TABLE connectors ADD COLUMN IF NOT EXISTS revoked INTEGER NOT NULL DEFAULT 0`)
-	} else {
-		_ = execSchemaAlter(db, `ALTER TABLE connectors ADD COLUMN revoked INTEGER NOT NULL DEFAULT 0`)
-	}
-	return nil
-}
-
-func execSchemaAlter(db *sql.DB, stmt string) error {
-	if _, err := db.Exec(stmt); err != nil {
-		msg := strings.ToLower(err.Error())
-		if strings.Contains(msg, "duplicate column") || strings.Contains(msg, "already exists") {
-			return nil
-		}
-		return err
 	}
 	return nil
 }
