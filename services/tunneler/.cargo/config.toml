@@ -1,2 +1,1 @@
-[build]
-target-dir = "/tmp/tunneler-target"
+# Cargo configuration for tunneler
