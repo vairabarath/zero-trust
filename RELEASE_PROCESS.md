@@ -50,10 +50,10 @@ Trigger: Tag pushed (v*)
     ↓
 Build Job (Parallel):
     ├─ Build for x86_64 (amd64)
-    │   └─ Output: grpctunneler-linux-amd64
+    │   └─ Output: tunneler-linux-amd64
     │
     └─ Build for aarch64 (arm64)
-        └─ Output: grpctunneler-linux-arm64
+        └─ Output: tunneler-linux-arm64
     ↓
 Release Job:
     ├─ Download both artifacts
@@ -67,8 +67,8 @@ GitHub automatically:
 2. Uploads 4 binaries:
    - `grpcconnector2-rs-linux-amd64`
    - `grpcconnector2-rs-linux-arm64`
-   - `grpctunneler-linux-amd64`
-   - `grpctunneler-linux-arm64`
+   - `tunneler-linux-amd64`
+   - `tunneler-linux-arm64`
 
 ### Step 4: Deployment Scripts Download Binaries
 
@@ -150,12 +150,12 @@ Developer                GitHub Actions              GitHub Release           Us
 **In GitHub Release:**
 - `grpcconnector2-rs-linux-amd64` (Rust connector, x86_64)
 - `grpcconnector2-rs-linux-arm64` (Rust connector, ARM64)
-- `grpctunneler-linux-amd64` (Rust tunneler, x86_64)
-- `grpctunneler-linux-arm64` (Rust tunneler, ARM64)
+- `tunneler-linux-amd64` (Rust tunneler, x86_64)
+- `tunneler-linux-arm64` (Rust tunneler, ARM64)
 
 **After Installation:**
 - `/usr/bin/grpcconnector2` (renamed, no `-rs` suffix)
-- `/usr/bin/grpctunneler` (renamed)
+- `/usr/bin/tunneler` (renamed)
 
 ### Why "latest" Works
 

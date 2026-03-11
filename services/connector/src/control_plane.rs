@@ -20,6 +20,7 @@ pub struct ConnectorControlPlane {
     pub allowlist: Arc<TunnelerAllowlist>,
     pub acl: Arc<PolicyCache>,
     pub trust_domain: String,
+    pub tunneler_registry: Arc<crate::TunnelerRegistry>,
 }
 
 #[tonic::async_trait]
@@ -53,6 +54,7 @@ impl ControlPlane for ConnectorControlPlane {
         let send_ch = self.send_ch.clone();
         let acl = self.acl.clone();
         let connector_id = self.connector_id.clone();
+        let tunneler_registry = self.tunneler_registry.clone();
 
         tokio::spawn(async move {
             loop {
@@ -67,6 +69,7 @@ impl ControlPlane for ConnectorControlPlane {
                             &tx,
                             &send_ch,
                             &acl,
+                            &tunneler_registry,
                         )
                         .await;
                     }
@@ -90,6 +93,7 @@ async fn handle_tunneler_message(
     tx: &mpsc::Sender<Result<ControlMessage, Status>>,
     send_ch: &mpsc::Sender<ControlMessage>,
     acl: &Arc<PolicyCache>,
+    tunneler_registry: &Arc<crate::TunnelerRegistry>,
 ) {
     match msg.r#type.as_str() {
         "ping" => {
@@ -101,28 +105,12 @@ async fn handle_tunneler_message(
                 .await;
         }
         "tunneler_heartbeat" => {
-            #[derive(Serialize)]
-            struct HeartbeatPayload<'a> {
-                tunneler_id: &'a str,
-                spiffe_id: &'a str,
-                status: &'a str,
-                connector_id: &'a str,
-            }
-            let payload = HeartbeatPayload {
-                tunneler_id,
-                spiffe_id,
-                status: &msg.status,
-                connector_id,
-            };
-            if let Ok(data) = serde_json::to_vec(&payload) {
-                let _ = send_ch
-                    .send(ControlMessage {
-                        r#type: "tunneler_heartbeat".to_string(),
-                        payload: data,
-                        ..Default::default()
-                    })
-                    .await;
-            }
+            // Record the tunneler's status; it will be included in the next
+            // connector heartbeat to the controller rather than forwarded as
+            // a separate message.
+            let status = if msg.status.is_empty() { "ONLINE" } else { &msg.status };
+            tunneler_registry.update(tunneler_id, status);
+            info!("tunneler heartbeat: tunneler_id={} spiffe_id={} status={}", tunneler_id, spiffe_id, status);
         }
         "tunneler_request" => {
             #[derive(Deserialize)]

@@ -59,6 +59,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("/api/admin/connectors", s.adminAuth(http.HandlerFunc(s.handleListConnectors)))
 	mux.Handle("/api/admin/connectors/", s.adminAuth(http.HandlerFunc(s.handleConnectorSubroutes)))
 	mux.Handle("/api/admin/tunnelers", s.adminAuth(http.HandlerFunc(s.handleListTunnelers)))
+	mux.Handle("/api/admin/tunnelers/", s.adminAuth(http.HandlerFunc(s.handleTunnelerSubroutes)))
 	mux.Handle("/api/admin/resources", s.adminAuth(http.HandlerFunc(s.handleResources)))
 	mux.Handle("/api/admin/resources/", s.adminAuth(http.HandlerFunc(s.handleResourceSubroutes)))
 	mux.Handle("/api/admin/audit", s.adminAuth(http.HandlerFunc(s.handleAuditLog)))
@@ -282,6 +283,25 @@ func (s *Server) handleListTunnelers(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) handleTunnelerSubroutes(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	id := strings.TrimPrefix(r.URL.Path, "/api/admin/tunnelers/")
+	if id == "" {
+		http.Error(w, "tunneler id required", http.StatusBadRequest)
+		return
+	}
+	if s.Tunnelers != nil {
+		s.Tunnelers.Delete(id)
+	}
+	if s.ACLs != nil && s.ACLs.DB() != nil {
+		_, _ = s.ACLs.DB().Exec(`DELETE FROM tunnelers WHERE id = ?`, id)
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
 func (s *Server) handleResources(w http.ResponseWriter, r *http.Request) {
