@@ -6,7 +6,13 @@ import (
 )
 
 func SaveConnectorToDB(db *sql.DB, rec ConnectorRecord) error {
-	lastSeenAt := rec.LastSeen.Format(time.RFC3339)
+	var revoked int
+	if err := db.QueryRow(`SELECT revoked FROM connectors WHERE id = ?`, rec.ID).Scan(&revoked); err == nil {
+		if revoked != 0 {
+			return nil
+		}
+	}
+	lastSeenAt := rec.LastSeen.UTC().Format(time.RFC3339)
 	_, err := db.Exec(
 		Rebind(`INSERT INTO connectors (id, private_ip, version, last_seen, installed, status, last_seen_at, workspace_id)
 		VALUES (?, ?, ?, ?, 1, 'online', ?, ?)
@@ -18,6 +24,13 @@ func SaveConnectorToDB(db *sql.DB, rec ConnectorRecord) error {
 
 func DeleteConnectorFromDB(db *sql.DB, id string) error {
 	_, err := db.Exec(Rebind(`DELETE FROM connectors WHERE id = ?`), id)
+	_, _ = db.Exec(Rebind(`DELETE FROM remote_network_connectors WHERE connector_id = ?`), id)
+	return err
+}
+
+func RevokeConnectorInDB(db *sql.DB, id string) error {
+	_, err := db.Exec(`UPDATE connectors SET revoked = 1, status = 'offline', installed = 0 WHERE id = ?`, id)
+	_, _ = db.Exec(`DELETE FROM remote_network_connectors WHERE connector_id = ?`, id)
 	return err
 }
 
@@ -48,9 +61,9 @@ func LoadConnectorsFromDB(db *sql.DB, registry *Registry) error {
 
 func SaveTunnelerToDB(db *sql.DB, rec TunnelerStatusRecord) error {
 	_, err := db.Exec(
-		Rebind(`INSERT INTO tunnelers (id, spiffe_id, connector_id, last_seen)
+		`INSERT INTO tunnelers (id, spiffe_id, connector_id, last_seen)
 		VALUES (?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET spiffe_id=excluded.spiffe_id, connector_id=excluded.connector_id, last_seen=excluded.last_seen`),
+		ON CONFLICT(id) DO UPDATE SET spiffe_id=excluded.spiffe_id, connector_id=excluded.connector_id, last_seen=excluded.last_seen`,
 		rec.ID, rec.SPIFFEID, rec.ConnectorID, rec.LastSeen.Unix(),
 	)
 	return err
@@ -82,31 +95,31 @@ func LoadTunnelersFromDB(db *sql.DB, registry *TunnelerStatusRegistry) error {
 
 func SaveResourceToDB(db *sql.DB, res Resource) error {
 	_, err := db.Exec(
-		Rebind(`INSERT INTO resources (id, name, type, address, protocol, port_from, port_to, connector_id, remote_network_id)
+		`INSERT INTO resources (id, name, type, address, protocol, port_from, port_to, connector_id, remote_network_id)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET name=excluded.name, type=excluded.type, address=excluded.address, protocol=excluded.protocol, port_from=excluded.port_from, port_to=excluded.port_to, connector_id=excluded.connector_id, remote_network_id=excluded.remote_network_id`),
+		ON CONFLICT(id) DO UPDATE SET name=excluded.name, type=excluded.type, address=excluded.address, protocol=excluded.protocol, port_from=excluded.port_from, port_to=excluded.port_to, connector_id=excluded.connector_id, remote_network_id=excluded.remote_network_id`,
 		res.ID, res.Name, res.Type, res.Address, res.Protocol, res.PortFrom, res.PortTo, res.ConnectorID, res.RemoteNetworkID,
 	)
 	return err
 }
 
 func DeleteResourceFromDB(db *sql.DB, id string) error {
-	_, err := db.Exec(Rebind(`DELETE FROM resources WHERE id = ?`), id)
+	_, err := db.Exec(`DELETE FROM resources WHERE id = ?`, id)
 	return err
 }
 
 func SaveAuthorizationToDB(db *sql.DB, auth Authorization) error {
 	_, err := db.Exec(
-		Rebind(`INSERT INTO authorizations (resource_id, principal_spiffe, filters)
+		`INSERT INTO authorizations (resource_id, principal_spiffe, filters)
 		VALUES (?, ?, ?)
-		ON CONFLICT(resource_id, principal_spiffe) DO UPDATE SET filters=excluded.filters`),
+		ON CONFLICT(resource_id, principal_spiffe) DO UPDATE SET filters=excluded.filters`,
 		auth.ResourceID, auth.PrincipalSPIFFE, marshalFilters(auth.Filters),
 	)
 	return err
 }
 
 func DeleteAuthorizationFromDB(db *sql.DB, resourceID, principal string) error {
-	_, err := db.Exec(Rebind(`DELETE FROM authorizations WHERE resource_id = ? AND principal_spiffe = ?`), resourceID, principal)
+	_, err := db.Exec(`DELETE FROM authorizations WHERE resource_id = ? AND principal_spiffe = ?`, resourceID, principal)
 	return err
 }
 
@@ -144,6 +157,6 @@ func LoadACLsFromDB(db *sql.DB, store *ACLStore) error {
 }
 
 func PruneAuditLogs(db *sql.DB, before time.Time) error {
-	_, err := db.Exec(Rebind(`DELETE FROM audit_logs WHERE created_at < ?`), before.Unix())
+	_, err := db.Exec(`DELETE FROM audit_logs WHERE created_at < ?`, before.Unix())
 	return err
 }

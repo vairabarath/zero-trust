@@ -17,13 +17,13 @@ const (
 
 // DiscoveredResource represents a network resource found during scanning.
 type DiscoveredResource struct {
-	ID           string `json:"id"`
-	IP           string `json:"ip"`
-	Port         uint16 `json:"port"`
-	Protocol     string `json:"protocol"`
-	ServiceName  string `json:"service_name"`
+	ID            string `json:"id"`
+	IP            string `json:"ip"`
+	Port          uint16 `json:"port"`
+	Protocol      string `json:"protocol"`
+	ServiceName   string `json:"service_name"`
 	ReachableFrom string `json:"reachable_from"`
-	FirstSeen    int64  `json:"first_seen"`
+	FirstSeen     int64  `json:"first_seen"`
 }
 
 // ScanJob tracks a single discovery scan request.

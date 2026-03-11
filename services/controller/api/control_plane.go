@@ -61,10 +61,15 @@ func (s *ControlPlaneServer) Connect(stream controllerpb.ControlPlane_ConnectSer
 	spiffeID, _ := SPIFFEIDFromContext(stream.Context())
 	log.Printf("control-plane stream connected: %s", spiffeID)
 	connectorID := parseConnectorID(spiffeID)
-	signingKey := derivePolicyKey(stream.Context(), connectorID)
-	if len(signingKey) == 0 && len(s.signingKey) > 0 {
-		signingKey = append([]byte(nil), s.signingKey...)
+	if s.db != nil && connectorID != "" {
+		var revoked int
+		if err := s.db.QueryRow(`SELECT revoked FROM connectors WHERE id = ?`, connectorID).Scan(&revoked); err == nil {
+			if revoked != 0 {
+				return status.Error(codes.PermissionDenied, "connector revoked")
+			}
+		}
 	}
+	signingKey := derivePolicyKey(stream.Context(), connectorID)
 	if len(signingKey) == 0 {
 		log.Printf("policy key derivation failed for connector %s", connectorID)
 	}
@@ -179,9 +184,9 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 		}
 		if msg.GetType() == "scan_report" && s.scanStore != nil {
 			var report struct {
-				RequestID string                    `json:"request_id"`
+				RequestID string                     `json:"request_id"`
 				Results   []state.DiscoveredResource `json:"results"`
-				Error     *string                   `json:"error"`
+				Error     *string                    `json:"error"`
 			}
 			if err := json.Unmarshal(msg.GetPayload(), &report); err == nil {
 				if report.Error != nil && *report.Error != "" {

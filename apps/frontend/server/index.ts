@@ -2,7 +2,7 @@ import express, { Request, Response } from 'express'
 import cors from 'cors'
 import compression from 'compression'
 import path from 'path'
-import { BACKEND_URL } from '../lib/proxy'
+import { getBackendUrl } from '../lib/proxy'
 
 import groupsRouter from './routes/groups'
 import usersRouter from './routes/users'
@@ -43,7 +43,7 @@ app.use('/api/workspaces', workspacesRouter)
 // POST /api/auth/logout — forwards to controller OAuth logout, then signals client to clear token
 app.post('/api/auth/logout', async (_req: Request, res: Response) => {
   try {
-    await fetch(`${BACKEND_URL}/oauth/logout`, { method: 'POST' })
+    await fetch(`${getBackendUrl()}/oauth/logout`, { method: 'POST' })
   } catch {
     // Best-effort
   }
