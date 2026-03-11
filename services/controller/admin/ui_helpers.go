@@ -1,0 +1,174 @@
+package admin
+
+import (
+	"database/sql"
+	"fmt"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"controller/api"
+	"controller/state"
+)
+
+// lookupConnectorNetworkID resolves the remote network ID for a connector.
+// It first checks connectors.remote_network_id and falls back to the
+// remote_network_connectors junction table when the column is empty.
+func lookupConnectorNetworkID(db *sql.DB, connectorID string) (string, error) {
+	var remoteNet sql.NullString
+	if err := db.QueryRow(state.Rebind(`SELECT remote_network_id FROM connectors WHERE id = ?`), connectorID).Scan(&remoteNet); err != nil {
+		return "", err
+	}
+	if remoteNet.Valid && remoteNet.String != "" {
+		return remoteNet.String, nil
+	}
+	var assigned sql.NullString
+	if err := db.QueryRow(state.Rebind(`SELECT network_id FROM remote_network_connectors WHERE connector_id = ? LIMIT 1`), connectorID).Scan(&assigned); err != nil {
+		return "", err
+	}
+	if assigned.Valid && assigned.String != "" {
+		return assigned.String, nil
+	}
+	return "", sql.ErrNoRows
+}
+
+func (s *Server) uiDB(w http.ResponseWriter) (*sql.DB, bool) {
+	if s == nil || s.ACLs == nil || s.ACLs.DB() == nil {
+		http.Error(w, "db not configured", http.StatusServiceUnavailable)
+		return nil, false
+	}
+	return s.ACLs.DB(), true
+}
+
+func scanUIResource(scanner interface{ Scan(dest ...any) error }) (uiResource, bool) {
+	var res uiResource
+	var protocol sql.NullString
+	var portFrom sql.NullInt64
+	var portTo sql.NullInt64
+	var alias sql.NullString
+	var remoteNet sql.NullString
+	if err := scanner.Scan(&res.ID, &res.Name, &res.Type, &res.Address, &protocol, &portFrom, &portTo, &alias, &res.Description, &remoteNet); err != nil {
+		return uiResource{}, false
+	}
+	res.Protocol = "TCP"
+	if protocol.Valid {
+		res.Protocol = protocol.String
+	}
+	if portFrom.Valid {
+		v := int(portFrom.Int64)
+		res.PortFrom = &v
+	}
+	if portTo.Valid {
+		v := int(portTo.Int64)
+		res.PortTo = &v
+	}
+	if alias.Valid {
+		res.Alias = &alias.String
+	}
+	if remoteNet.Valid {
+		res.RemoteNetwork = &remoteNet.String
+	}
+	return res, true
+}
+
+func scanUIConnector(scanner interface{ Scan(dest ...any) error }) (uiConnector, bool) {
+	var c uiConnector
+	var name sql.NullString
+	var status sql.NullString
+	var version sql.NullString
+	var hostname sql.NullString
+	var remoteNetworkID sql.NullString
+	var lastSeen sql.NullString
+	var lastSeenAt sql.NullString
+	var installed sql.NullInt64
+	var lastPolicyVersion sql.NullInt64
+	var privateIP sql.NullString
+	if err := scanner.Scan(&c.ID, &name, &status, &version, &hostname, &remoteNetworkID, &lastSeen, &lastSeenAt, &installed, &lastPolicyVersion, &privateIP); err != nil {
+		return uiConnector{}, false
+	}
+	c.PrivateIP = privateIP.String
+	c.Name = strings.TrimSpace(name.String)
+	if c.Name == "" {
+		c.Name = c.ID
+	}
+	c.Status = strings.TrimSpace(status.String)
+	if c.Status == "" {
+		c.Status = "offline"
+	}
+	c.Version = strings.TrimSpace(version.String)
+	if c.Version == "" {
+		c.Version = "1.0.0"
+	}
+	c.Hostname = strings.TrimSpace(hostname.String)
+	c.RemoteNetworkID = strings.TrimSpace(remoteNetworkID.String)
+	if lastSeenAt.Valid {
+		c.LastSeen = lastSeenAt.String
+		c.LastSeenAt = &lastSeenAt.String
+	} else if lastSeen.Valid {
+		if ts, err := strconv.ParseInt(lastSeen.String, 10, 64); err == nil {
+			iso := isoStringFromUnix(ts)
+			c.LastSeen = iso
+			c.LastSeenAt = &iso
+		} else {
+			c.LastSeen = lastSeen.String
+			c.LastSeenAt = &lastSeen.String
+		}
+	}
+	c.Installed = installed.Valid && installed.Int64 != 0
+	if lastPolicyVersion.Valid {
+		c.LastPolicyVersion = int(lastPolicyVersion.Int64)
+	}
+	return c, true
+}
+
+func buildPorts(from, to *int) string {
+	if from != nil && to != nil {
+		return fmt.Sprintf("%d-%d", *from, *to)
+	}
+	if from != nil {
+		return fmt.Sprintf("%d", *from)
+	}
+	return ""
+}
+
+func nullInt(v *int) interface{} {
+	if v == nil {
+		return nil
+	}
+	return *v
+}
+
+func dateStringNow() string {
+	return time.Now().UTC().Format("2006-01-02")
+}
+
+func dateStringFromUnix(ts int64) string {
+	if ts == 0 {
+		return ""
+	}
+	return time.Unix(ts, 0).UTC().Format("2006-01-02")
+}
+
+func isoStringNow() string {
+	return time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
+}
+
+func isoStringFromUnix(ts int64) string {
+	if ts == 0 {
+		return ""
+	}
+	return time.Unix(ts, 0).UTC().Format("2006-01-02T15:04:05.000Z")
+}
+
+func policyResources(db *sql.DB, remoteNetworkID string) ([]policyResource, error) {
+	return api.PolicyResourcesForUI(db, remoteNetworkID)
+}
+
+func policyHash(resources []policyResource) string {
+	return api.PolicyHashForUI(resources)
+}
+
+func policyVersion(db *sql.DB, connectorID, policyHash, compiledAt string) int {
+	return api.PolicyVersionForUI(db, connectorID, policyHash, compiledAt)
+}

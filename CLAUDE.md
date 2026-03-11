@@ -71,7 +71,7 @@ All services use SPIFFE IDs under trust domain `spiffe://mycorp.internal`:
 
 Go module name for controller is `controller` (in `services/controller/go.mod`).
 
-Admin HTTP API routes live in `services/controller/admin/` — `handlers.go`, `handlers_remote_networks.go`, `handlers_users.go` for core routes; `ui_handlers.go` for UI-specific endpoints; `ui_routes.go` for routing. gRPC implementations are in `services/controller/api/`.
+Admin HTTP API routes live in `services/controller/admin/` — `handlers.go`, `handlers_remote_networks.go`, `handlers_users.go`, `handlers_discovery.go`, `oauth_invite_handlers.go` for core routes; `ui_handlers.go` for UI-specific endpoints; `ui_routes.go` for routing; `session_helpers.go` for session utilities. gRPC implementations are in `services/controller/api/`.
 
 Protobuf definitions are in `shared/proto/controller.proto`.
 
@@ -80,7 +80,7 @@ Protobuf definitions are in `shared/proto/controller.proto`.
 **Architecture:** Vite dev server (port 3000) proxies `/api/*` to an Express server (port 3001). In production, Express serves the Vite build statically.
 
 - **`server/index.ts`** — Express app, mounts all API routers
-- **`server/routes/`** — Per-resource Express routers (groups, users, resources, connectors, tunnelers, remote-networks, access-rules, tokens, subjects, service-accounts, policy)
+- **`server/routes/`** — Per-resource Express routers (groups, users, resources, connectors, tunnelers, remote-networks, access-rules, tokens, subjects, service-accounts, policy, audit-logs, discovery)
 - **`lib/proxy.ts`** — Proxies Express requests to the Go controller at `NEXT_PUBLIC_API_BASE_URL` (default `:8081`) with Bearer token auth
 - **`lib/db.ts`** — SQLite schema, migrations, seeding (via `better-sqlite3`) for frontend-local state
 - **`lib/types.ts`** — All shared TypeScript types

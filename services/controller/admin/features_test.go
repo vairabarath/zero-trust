@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"controller/state"
-
 )
 
 // ---- helpers ----------------------------------------------------------------
@@ -529,10 +528,10 @@ func TestSaveConnectorToDB_setsInstalledAndStatus(t *testing.T) {
 	insertConnector(t, db, "conn-s1", "")
 
 	rec := state.ConnectorRecord{
-		ID:       "conn-s1",
+		ID:        "conn-s1",
 		PrivateIP: "192.168.1.10",
-		Version:  "2.0",
-		LastSeen: time.Now().UTC(),
+		Version:   "2.0",
+		LastSeen:  time.Now().UTC(),
 	}
 	if err := state.SaveConnectorToDB(db, rec); err != nil {
 		t.Fatalf("SaveConnectorToDB: %v", err)

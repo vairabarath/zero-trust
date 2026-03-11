@@ -177,9 +177,9 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		}
 		if msg.GetType() == "scan_report" && s.scanStore != nil {
 			var report struct {
-				RequestID string                    `json:"request_id"`
+				RequestID string                     `json:"request_id"`
 				Results   []state.DiscoveredResource `json:"results"`
-				Error     *string                   `json:"error"`
+				Error     *string                    `json:"error"`
 			}
 			if err := json.Unmarshal(msg.GetPayload(), &report); err == nil {
 				if report.Error != nil && *report.Error != "" {
