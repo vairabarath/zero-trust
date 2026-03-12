@@ -44,6 +44,12 @@ impl TunnelerRegistry {
         }
     }
 
+    pub fn remove(&self, tunneler_id: &str) {
+        if let Ok(mut map) = self.inner.write() {
+            map.remove(tunneler_id);
+        }
+    }
+
     pub fn snapshot(&self) -> Vec<TunnelerStatusEntry> {
         self.inner
             .read()

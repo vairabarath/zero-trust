@@ -12,7 +12,6 @@ import ConnectorDetailPage from './pages/connectors/ConnectorDetailPage'
 import RemoteNetworksPage from './pages/remote-networks/RemoteNetworksPage'
 import NetworkDetailPage from './pages/remote-networks/NetworkDetailPage'
 import TunnelersPage from './pages/tunnelers/TunnelersPage'
-import NewTunnelerPage from './pages/tunnelers/NewTunnelerPage'
 import TunnelerDetailPage from './pages/tunnelers/TunnelerDetailPage'
 import PolicyLayout from './pages/policy/PolicyLayout'
 import ResourcePoliciesPage from './pages/policy/ResourcePoliciesPage'
@@ -194,7 +193,6 @@ export default function App() {
         <Route path="remote-networks" element={<RemoteNetworksPage />} />
         <Route path="remote-networks/:networkId" element={<NetworkDetailPage />} />
         <Route path="tunnelers" element={<TunnelersPage />} />
-        <Route path="tunnelers/new" element={<NewTunnelerPage />} />
         <Route path="tunnelers/:tunnelerId" element={<TunnelerDetailPage />} />
         <Route path="policy" element={<PolicyLayout />}>
           <Route index element={<Navigate to="resource-policies" replace />} />

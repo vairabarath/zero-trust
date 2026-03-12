@@ -29,7 +29,13 @@ function fallbackCopy(text: string) {
   document.body.removeChild(textarea);
 }
 
-export function TunnelerInstall({ initialTunnelerId }: { initialTunnelerId?: string }) {
+export function TunnelerInstall({
+  initialTunnelerId,
+  initialConnectorId,
+}: {
+  initialTunnelerId?: string;
+  initialConnectorId?: string;
+}) {
   const [token, setToken] = useState<string>('');
   const [tokenLoading, setTokenLoading] = useState(false);
 
@@ -56,8 +62,16 @@ export function TunnelerInstall({ initialTunnelerId }: { initialTunnelerId?: str
       .then((list) => {
         const installed = list.filter((c) => c.installed);
         setConnectors(installed);
+        if (initialConnectorId) {
+          const found = installed.find((c) => c.id === initialConnectorId);
+          if (found) {
+            setSelectedConnectorId(found.id);
+            if (found.privateIp) setConnectorAddr(`${found.privateIp}:9443`);
+          }
+        }
       })
       .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

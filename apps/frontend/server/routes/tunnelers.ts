@@ -3,26 +3,35 @@ import { proxyToBackend } from '../../lib/proxy'
 
 const router = Router()
 
-interface BackendAdminTunneler {
-  id: string
-  status: 'ONLINE' | 'OFFLINE' | string
-  connector_id: string
-  last_seen: string
-}
-
 // GET /api/tunnelers
 router.get('/', async (_req: Request, res: Response) => {
   try {
-    const tunnelers = await proxyToBackend<BackendAdminTunneler[]>('/api/admin/tunnelers')
-    const formatted = (Array.isArray(tunnelers) ? tunnelers : []).map((t) => ({
-      id: t.id,
-      name: t.id,
-      status: String(t.status || '').toLowerCase() === 'online' ? 'online' : 'offline',
-      version: '—',
-      hostname: '—',
-      remoteNetworkId: '',
-    }))
-    res.json(formatted)
+    const tunnelers = await proxyToBackend('/api/tunnelers')
+    res.json(tunnelers)
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message })
+  }
+})
+
+// POST /api/tunnelers
+router.post('/', async (req: Request, res: Response) => {
+  try {
+    const result = await proxyToBackend('/api/tunnelers', {
+      method: 'POST',
+      body: JSON.stringify(req.body),
+    })
+    res.json(result)
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message })
+  }
+})
+
+// GET /api/tunnelers/:tunneledId
+router.get('/:tunneledId', async (req: Request, res: Response) => {
+  try {
+    const { tunneledId } = req.params
+    const result = await proxyToBackend(`/api/tunnelers/${tunneledId}`)
+    res.json(result)
   } catch (error) {
     res.status(500).json({ error: (error as Error).message })
   }
@@ -32,8 +41,34 @@ router.get('/', async (_req: Request, res: Response) => {
 router.delete('/:tunneledId', async (req: Request, res: Response) => {
   try {
     const { tunneledId } = req.params
-    const result = await proxyToBackend(`/api/admin/tunnelers/${tunneledId}`, {
+    const result = await proxyToBackend(`/api/tunnelers/${tunneledId}`, {
       method: 'DELETE',
+    })
+    res.json(result)
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message })
+  }
+})
+
+// POST /api/tunnelers/:tunneledId/revoke
+router.post('/:tunneledId/revoke', async (req: Request, res: Response) => {
+  try {
+    const { tunneledId } = req.params
+    const result = await proxyToBackend(`/api/tunnelers/${tunneledId}/revoke`, {
+      method: 'POST',
+    })
+    res.json(result)
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message })
+  }
+})
+
+// POST /api/tunnelers/:tunneledId/grant
+router.post('/:tunneledId/grant', async (req: Request, res: Response) => {
+  try {
+    const { tunneledId } = req.params
+    const result = await proxyToBackend(`/api/tunnelers/${tunneledId}/grant`, {
+      method: 'POST',
     })
     res.json(result)
   } catch (error) {

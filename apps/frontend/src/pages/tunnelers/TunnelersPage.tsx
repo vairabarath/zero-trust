@@ -1,28 +1,28 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { getTunnelers } from '@/lib/mock-api';
 import { Tunneler } from '@/lib/types';
 import { TunnelersList } from '@/components/dashboard/tunnelers/tunnelers-list';
+import { AddTunnelerModal } from '@/components/dashboard/tunnelers/add-tunneler-modal';
 import { Loader2, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export default function TunnelersPage() {
-  const navigate = useNavigate();
   const [tunnelers, setTunnelers] = useState<Tunneler[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isAddOpen, setIsAddOpen] = useState(false);
+
+  const loadTunnelers = async () => {
+    try {
+      const data = await getTunnelers();
+      setTunnelers(data);
+    } catch (error) {
+      console.error('Failed to load tunnelers:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const loadTunnelers = async () => {
-      try {
-        const data = await getTunnelers();
-        setTunnelers(data);
-      } catch (error) {
-        console.error('Failed to load tunnelers:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     loadTunnelers();
   }, []);
 
@@ -44,7 +44,7 @@ export default function TunnelersPage() {
             Manage resource tunnelers for secure access to network resources
           </p>
         </div>
-        <Button className="gap-2" onClick={() => navigate('/dashboard/tunnelers/new')}>
+        <Button className="gap-2" onClick={() => setIsAddOpen(true)}>
           <Plus className="h-4 w-4" />
           Add Tunneler
         </Button>
@@ -54,6 +54,12 @@ export default function TunnelersPage() {
       <TunnelersList
         tunnelers={tunnelers}
         onRevoked={(id) => setTunnelers((prev) => prev.filter((t) => t.id !== id))}
+      />
+
+      <AddTunnelerModal
+        isOpen={isAddOpen}
+        onClose={() => setIsAddOpen(false)}
+        onTunnelerAdded={loadTunnelers}
       />
     </div>
   );

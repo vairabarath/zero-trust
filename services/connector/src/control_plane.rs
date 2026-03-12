@@ -79,6 +79,8 @@ impl ControlPlane for ConnectorControlPlane {
                     }
                 }
             }
+            tunneler_registry.remove(&tunneler_id);
+            info!("tunneler disconnected: {}", spiffe_id);
         });
 
         Ok(Response::new(tokio_stream::wrappers::ReceiverStream::new(rx)))

@@ -87,6 +87,33 @@ export async function revokeConnector(connectorId: string): Promise<void> {
   });
 }
 
+export async function grantConnector(connectorId: string): Promise<void> {
+  await request(`/api/connectors/${encodeURIComponent(connectorId)}/grant`, {
+    method: 'POST',
+  });
+}
+
+// API: Get single tunneler with details
+export async function getTunneler(tunneledId: string) {
+  return request<{ tunneler: Tunneler | null; network: RemoteNetwork | undefined; logs: any[] }>(
+    `/api/tunnelers/${tunneledId}`
+  );
+}
+
+// API: Revoke a tunneler
+export async function revokeTunneler(tunneledId: string): Promise<void> {
+  await request(`/api/tunnelers/${encodeURIComponent(tunneledId)}/revoke`, {
+    method: 'POST',
+  });
+}
+
+// API: Grant a tunneler
+export async function grantTunneler(tunneledId: string): Promise<void> {
+  await request(`/api/tunnelers/${encodeURIComponent(tunneledId)}/grant`, {
+    method: 'POST',
+  });
+}
+
 // API: Get all remote networks
 export async function getRemoteNetworks(): Promise<RemoteNetwork[]> {
   return request<RemoteNetwork[]>('/api/remote-networks');
@@ -265,6 +292,18 @@ export async function updateResource(
 // API: Delete (revoke) a connector
 export async function deleteConnector(connectorId: string): Promise<void> {
   await request(`/api/connectors/${connectorId}`, { method: 'DELETE' });
+}
+
+// API: Add a new tunneler
+export async function addTunneler(data: {
+  name: string;
+  connectorId?: string;
+  remoteNetworkId?: string;
+}): Promise<void> {
+  await request('/api/tunnelers', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
 }
 
 // API: Add a new connector

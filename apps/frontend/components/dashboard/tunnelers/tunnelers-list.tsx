@@ -14,7 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { ArrowRight, Cable, CircleDotDashed, CircleDot, AlertTriangle, Loader2 } from 'lucide-react';
+import { ArrowRight, Cable, CircleDotDashed, CircleDot, AlertTriangle, Loader2, Ban, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface TunnelersListProps {
@@ -26,14 +26,14 @@ export function TunnelersList({ tunnelers, onRevoked }: TunnelersListProps) {
   const [revokingId, setRevokingId] = useState<string | null>(null);
 
   const handleRevoke = async (tunneler: Tunneler) => {
-    if (!window.confirm(`Revoke tunneler "${tunneler.name}"? This will remove it from the controller.`)) return;
+    if (!window.confirm(`Delete tunneler "${tunneler.name}"? This will remove it from the controller.`)) return;
     setRevokingId(tunneler.id);
     try {
       await deleteTunneler(tunneler.id);
-      toast.success(`Tunneler "${tunneler.name}" revoked.`);
+      toast.success(`Tunneler "${tunneler.name}" deleted.`);
       onRevoked?.(tunneler.id);
     } catch {
-      toast.error('Failed to revoke tunneler. Check that the backend is running.');
+      toast.error('Failed to delete tunneler. Check that the backend is running.');
     } finally {
       setRevokingId(null);
     }
@@ -73,12 +73,14 @@ export function TunnelersList({ tunnelers, onRevoked }: TunnelersListProps) {
               </TableCell>
               <TableCell>
                 <Badge variant="outline" className="gap-1">
-                  {tunneler.status === 'online' ? (
+                  {tunneler.status === 'revoked' ? (
+                    <Ban className="h-3 w-3 text-red-500" />
+                  ) : tunneler.status === 'online' ? (
                     <CircleDot className="h-3 w-3 fill-green-500 text-green-500" />
                   ) : (
                     <CircleDotDashed className="h-3 w-3 fill-muted-foreground text-muted-foreground" />
                   )}
-                  {tunneler.status === 'online' ? 'Online' : 'Offline'}
+                  {tunneler.status === 'revoked' ? 'Revoked' : tunneler.status === 'online' ? 'Online' : 'Offline'}
                 </Badge>
               </TableCell>
               <TableCell className="text-sm text-muted-foreground">
@@ -116,9 +118,9 @@ export function TunnelersList({ tunnelers, onRevoked }: TunnelersListProps) {
                     {revokingId === tunneler.id ? (
                       <Loader2 className="h-3 w-3 animate-spin" />
                     ) : (
-                      <AlertTriangle className="h-3 w-3" />
+                      <Trash2 className="h-3 w-3" />
                     )}
-                    Revoke
+                    Delete
                   </Button>
                 </div>
               </TableCell>

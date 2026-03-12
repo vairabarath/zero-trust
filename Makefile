@@ -37,15 +37,17 @@ build-controller:
 	@echo "Building controller..."
 	cd services/controller && go build -o ../../dist/controller .
 
+CARGO ?= $(shell which cargo 2>/dev/null || echo /home/$(SUDO_USER)/.cargo/bin/cargo)
+
 build-connector:
 	@echo "Building connector..."
-	cd services/connector && cargo build --release
+	cd services/connector && $(CARGO) build --release
 	mkdir -p dist
 	cp services/connector/target/release/connector dist/
 
 build-tunneler:
 	@echo "Building tunneler..."
-	cd services/tunneler && cargo build --release
+	cd services/tunneler && $(CARGO) build --release
 	mkdir -p dist
 	cp services/tunneler/target/release/tunneler dist/
 

@@ -84,7 +84,8 @@ func scanUIConnector(scanner interface{ Scan(dest ...any) error }) (uiConnector,
 	var installed sql.NullInt64
 	var lastPolicyVersion sql.NullInt64
 	var privateIP sql.NullString
-	if err := scanner.Scan(&c.ID, &name, &status, &version, &hostname, &remoteNetworkID, &lastSeen, &lastSeenAt, &installed, &lastPolicyVersion, &privateIP); err != nil {
+	var revoked sql.NullInt64
+	if err := scanner.Scan(&c.ID, &name, &status, &version, &hostname, &remoteNetworkID, &lastSeen, &lastSeenAt, &installed, &lastPolicyVersion, &privateIP, &revoked); err != nil {
 		return uiConnector{}, false
 	}
 	c.PrivateIP = privateIP.String
@@ -95,6 +96,10 @@ func scanUIConnector(scanner interface{ Scan(dest ...any) error }) (uiConnector,
 	c.Status = strings.TrimSpace(status.String)
 	if c.Status == "" {
 		c.Status = "offline"
+	}
+	if revoked.Valid && revoked.Int64 != 0 {
+		c.Status = "revoked"
+		c.Revoked = true
 	}
 	c.Version = strings.TrimSpace(version.String)
 	if c.Version == "" {
@@ -120,6 +125,54 @@ func scanUIConnector(scanner interface{ Scan(dest ...any) error }) (uiConnector,
 		c.LastPolicyVersion = int(lastPolicyVersion.Int64)
 	}
 	return c, true
+}
+
+func scanUITunneler(scanner interface{ Scan(dest ...any) error }) (uiTunneler, bool) {
+	var t uiTunneler
+	var name sql.NullString
+	var status sql.NullString
+	var version sql.NullString
+	var hostname sql.NullString
+	var remoteNetworkID sql.NullString
+	var connectorID sql.NullString
+	var revoked sql.NullInt64
+	var installed sql.NullInt64
+	var lastSeen sql.NullString
+	var lastSeenAt sql.NullString
+	if err := scanner.Scan(&t.ID, &name, &status, &version, &hostname, &remoteNetworkID, &connectorID, &revoked, &installed, &lastSeen, &lastSeenAt); err != nil {
+		return uiTunneler{}, false
+	}
+	t.ConnectorID = connectorID.String
+	t.Name = strings.TrimSpace(name.String)
+	if t.Name == "" {
+		t.Name = t.ID
+	}
+	t.Status = strings.TrimSpace(status.String)
+	if t.Status == "" {
+		t.Status = "offline"
+	}
+	if revoked.Valid && revoked.Int64 != 0 {
+		t.Status = "revoked"
+		t.Revoked = true
+	}
+	t.Version = strings.TrimSpace(version.String)
+	t.Hostname = strings.TrimSpace(hostname.String)
+	t.RemoteNetworkID = strings.TrimSpace(remoteNetworkID.String)
+	t.Installed = installed.Valid && installed.Int64 != 0
+	if lastSeenAt.Valid && lastSeenAt.String != "" {
+		t.LastSeen = lastSeenAt.String
+		t.LastSeenAt = &lastSeenAt.String
+	} else if lastSeen.Valid {
+		if ts, err := strconv.ParseInt(lastSeen.String, 10, 64); err == nil {
+			iso := isoStringFromUnix(ts)
+			t.LastSeen = iso
+			t.LastSeenAt = &iso
+		} else {
+			t.LastSeen = lastSeen.String
+			t.LastSeenAt = &lastSeen.String
+		}
+	}
+	return t, true
 }
 
 func buildPorts(from, to *int) string {
