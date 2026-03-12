@@ -79,7 +79,7 @@ func consumeOAuthState(state string) bool {
 
 // handleProviderLogin returns a handler that redirects the user to the OAuth provider's consent screen.
 // If ?flow=signup is present, the CSRF state encodes signup data so it survives the redirect round-trip.
-// State format for signup: "signup:<csrf>:<url-encoded ws_name>:<ws_slug>"
+// State format for signup: "signup:<csrf>:<url-encoded ws_name>:<ws_slug>:<signup_id>"
 func (s *Server) handleProviderLogin(provider string, cfg *oauth2.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if cfg == nil {
@@ -96,7 +96,14 @@ func (s *Server) handleProviderLogin(provider string, cfg *oauth2.Config) http.H
 		if r.URL.Query().Get("flow") == "signup" {
 			wsName := r.URL.Query().Get("ws_name")
 			wsSlug := r.URL.Query().Get("ws_slug")
-			csrfState = fmt.Sprintf("signup:%s:%s:%s", csrfState, url.QueryEscape(wsName), url.QueryEscape(wsSlug))
+			signupID := r.URL.Query().Get("signup_id")
+			csrfState = fmt.Sprintf(
+				"signup:%s:%s:%s:%s",
+				csrfState,
+				url.QueryEscape(wsName),
+				url.QueryEscape(wsSlug),
+				url.QueryEscape(signupID),
+			)
 		}
 		// Capture the frontend origin so the callback redirects to the correct host
 		// (e.g. LAN IP instead of localhost).
@@ -127,7 +134,7 @@ func (s *Server) handleProviderCallback(provider string, cfg *oauth2.Config, fet
 		isInvite := strings.HasPrefix(stateParam, "invite:")
 		isSignup := strings.HasPrefix(stateParam, "signup:")
 		var inviteToken string
-		var signupWSName, signupWSSlug string
+		var signupWSName, signupWSSlug, signupID string
 
 		if isInvite {
 			inviteToken = strings.TrimPrefix(stateParam, "invite:")
@@ -136,11 +143,14 @@ func (s *Server) handleProviderCallback(provider string, cfg *oauth2.Config, fet
 				return
 			}
 		} else if isSignup {
-			// Parse signup state: "signup:<csrf>:<ws_name>:<ws_slug>"
-			parts := strings.SplitN(stateParam, ":", 4)
+			// Parse signup state: "signup:<csrf>:<ws_name>:<ws_slug>:<signup_id>"
+			parts := strings.SplitN(stateParam, ":", 5)
 			if len(parts) >= 4 {
 				signupWSName, _ = url.QueryUnescape(parts[2])
 				signupWSSlug, _ = url.QueryUnescape(parts[3])
+				if len(parts) >= 5 {
+					signupID, _ = url.QueryUnescape(parts[4])
+				}
 			}
 			if !consumeOAuthState(stateParam) {
 				http.Error(w, "invalid or expired state", http.StatusBadRequest)
@@ -266,6 +276,8 @@ func (s *Server) handleProviderCallback(provider string, cfg *oauth2.Config, fet
 					log.Printf("invite: failed to sign workspace JWT: %v", wsJWTErr)
 				}
 			}
+			http.Error(w, "workspace invite context required", http.StatusForbidden)
+			return
 		} else if isSignup {
 			// Signup flow: create user record if not exists, skip allowlist check.
 			if s.Users != nil {
@@ -309,7 +321,12 @@ func (s *Server) handleProviderCallback(provider string, cfg *oauth2.Config, fet
 		// For signup flow, include workspace data in the redirect so the frontend
 		// can auto-create the workspace without relying on sessionStorage.
 		if isSignup && signupWSName != "" && signupWSSlug != "" {
-			redirect += fmt.Sprintf("&ws_name=%s&ws_slug=%s", url.QueryEscape(signupWSName), url.QueryEscape(signupWSSlug))
+			redirect += fmt.Sprintf(
+				"&ws_name=%s&ws_slug=%s&signup_id=%s",
+				url.QueryEscape(signupWSName),
+				url.QueryEscape(signupWSSlug),
+				url.QueryEscape(signupID),
+			)
 		}
 		http.Redirect(w, r, redirect, http.StatusFound)
 	}
@@ -433,23 +450,18 @@ func (s *Server) handleInviteUser(w http.ResponseWriter, r *http.Request) {
 	if wsID == "" {
 		wsID = s.workspaceIDFromRequest(r)
 	}
+	if wsID == "" {
+		http.Error(w, "workspace_id is required", http.StatusBadRequest)
+		return
+	}
 	if req.Role == "" {
 		req.Role = "member"
 	}
 
-	if wsID != "" {
-		// Store in workspace_invites so the invite is workspace-aware.
-		_, err = db.Exec(
-			state.Rebind(`INSERT INTO workspace_invites (token, workspace_id, email, role, expires_at, used) VALUES (?, ?, ?, ?, ?, 0)`),
-			inviteToken, wsID, email, req.Role, expiresAt,
-		)
-	} else {
-		// Fallback: legacy invite_tokens for non-workspace invites.
-		_, err = db.Exec(
-			state.Rebind(`INSERT INTO invite_tokens (token, email, expires_at, used) VALUES (?, ?, ?, 0)`),
-			inviteToken, email, expiresAt,
-		)
-	}
+	_, err = db.Exec(
+		state.Rebind(`INSERT INTO workspace_invites (token, workspace_id, email, role, expires_at, used) VALUES (?, ?, ?, ?, ?, 0)`),
+		inviteToken, wsID, email, req.Role, expiresAt,
+	)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to create invite token: %v", err), http.StatusInternalServerError)
 		return

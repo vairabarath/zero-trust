@@ -136,6 +136,7 @@ func initSchemaDialect(db *sql.DB, dialect string) error {
 			created_at TEXT NOT NULL DEFAULT '',
 			updated_at TEXT NOT NULL DEFAULT ''
 		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_unique ON users (LOWER(email))`,
 		`CREATE TABLE IF NOT EXISTS user_groups (
 			id TEXT PRIMARY KEY,
 			name TEXT NOT NULL DEFAULT '',

@@ -113,7 +113,48 @@ func (s *Server) handleUIGroupsSubroutes(w http.ResponseWriter, r *http.Request)
 	parts := strings.Split(path, "/")
 	groupID := parts[0]
 	if len(parts) == 1 {
-		if r.Method != http.MethodGet {
+		switch r.Method {
+		case http.MethodPut, http.MethodPatch:
+			var req struct {
+				Name        string `json:"name"`
+				Description string `json:"description"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, "invalid json", http.StatusBadRequest)
+				return
+			}
+			now := isoStringNow()
+			if _, err := db.Exec(state.Rebind(`UPDATE user_groups SET name = ?, description = ?, updated_at = ? WHERE id = ?`), req.Name, req.Description, now, groupID); err != nil {
+				http.Error(w, "failed to update group", http.StatusInternalServerError)
+				return
+			}
+			if s.ACLNotify != nil {
+				s.ACLNotify.NotifyPolicyChange()
+			}
+			writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+			return
+		case http.MethodDelete:
+			tx, err := db.Begin()
+			if err != nil {
+				http.Error(w, "failed to delete group", http.StatusInternalServerError)
+				return
+			}
+			_, _ = tx.Exec(state.Rebind(`DELETE FROM user_group_members WHERE group_id = ?`), groupID)
+			_, _ = tx.Exec(state.Rebind(`DELETE FROM access_rule_groups WHERE group_id = ?`), groupID)
+			if _, err := tx.Exec(state.Rebind(`DELETE FROM user_groups WHERE id = ?`), groupID); err != nil {
+				_ = tx.Rollback()
+				http.Error(w, "failed to delete group", http.StatusInternalServerError)
+				return
+			}
+			_ = tx.Commit()
+			if s.ACLNotify != nil {
+				s.ACLNotify.NotifyPolicyChange()
+			}
+			writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+			return
+		case http.MethodGet:
+			// fall through to GET handler below
+		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}

@@ -287,6 +287,20 @@ func (c *connectorClient) send(msg *controllerpb.ControlMessage) error {
 	return c.stream.Send(msg)
 }
 
+// IsStreamActive returns true if a connector with the given ID currently has
+// an active gRPC control-plane stream. Both the raw connector ID and its SPIFFE
+// ID key are checked.
+func (s *ControlPlaneServer) IsStreamActive(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for key, c := range s.clients {
+		if key == id || c.connectorID == id {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *ControlPlaneServer) addClient(id string, c *connectorClient) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

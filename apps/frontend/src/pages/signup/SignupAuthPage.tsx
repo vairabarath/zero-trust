@@ -56,6 +56,7 @@ export default function SignupAuthPage() {
       flow: 'signup',
       ws_name: state.networkName,
       ws_slug: state.networkSlug,
+      signup_id: state.attemptId,
       return_to: window.location.origin,
     })
     window.location.href = `${CONTROLLER_URL}/oauth/${provider}/login?${params.toString()}`

@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
-import { Users, Shield, Database, Globe, FileText, ChevronDown, ScrollText, Settings } from 'lucide-react';
+import { Users, Shield, Database, Globe, FileText, ChevronDown, ScrollText, Settings, Activity } from 'lucide-react';
 
 type NavItem = {
   label: string;
@@ -63,6 +63,12 @@ const navItems: NavItem[] = [
     href: '/dashboard/audit-logs',
     icon: ScrollText,
     description: 'View admin audit log entries',
+  },
+  {
+    label: 'Network Diagnostics',
+    href: '/dashboard/diagnostics',
+    icon: Activity,
+    description: 'Monitor connector health and trace access paths',
   },
   {
     label: 'Workspace Settings',

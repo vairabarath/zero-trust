@@ -40,6 +40,9 @@ func (s *Server) RegisterUIRoutes(mux *http.ServeMux) {
 	mux.Handle("/api/service-accounts", withCORS(ws(http.HandlerFunc(s.handleUIServiceAccounts))))
 	mux.Handle("/api/policy/compile/", withCORS(ws(http.HandlerFunc(s.handleUIPolicyCompile))))
 	mux.Handle("/api/policy/acl/", withCORS(ws(http.HandlerFunc(s.handleUIPolicyACL))))
+	mux.Handle("/api/diagnostics", withCORS(ws(http.HandlerFunc(s.handleUIDiagnostics))))
+	mux.Handle("/api/diagnostics/ping/", withCORS(ws(http.HandlerFunc(s.handleUIDiagnosticsPing))))
+	mux.Handle("/api/diagnostics/trace", withCORS(ws(http.HandlerFunc(s.handleUIDiagnosticsTrace))))
 
 	// Discovery routes (admin-authed with CORS)
 	mux.Handle("/api/admin/discovery/scan", withCORS(s.adminAuth(http.HandlerFunc(s.handleStartScan))))

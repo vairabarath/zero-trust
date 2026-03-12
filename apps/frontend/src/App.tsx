@@ -20,6 +20,7 @@ import ResourcePolicyDetailPage from './pages/policy/ResourcePolicyDetailPage'
 import SignInPolicyPage from './pages/policy/SignInPolicyPage'
 import DeviceProfilesPage from './pages/policy/DeviceProfilesPage'
 import AuditLogsPage from './pages/AuditLogsPage'
+import NetworkDiagnosticsPage from './pages/diagnostics/NetworkDiagnosticsPage'
 import NetworkDiscoveryPage from './pages/resources/NetworkDiscoveryPage'
 import WorkspaceSelectorPage from './pages/workspaces/WorkspaceSelectorPage'
 import WorkspaceCreatePage from './pages/workspaces/WorkspaceCreatePage'
@@ -37,6 +38,7 @@ import { STORAGE_KEY as SIGNUP_STORAGE_KEY } from './contexts/SignupContext'
 import { getWorkspaceClaims } from '@/lib/jwt'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api'
+const SIGNUP_PROCESS_PREFIX = 'ztna_signup_processed:'
 
 // Captures ?token= from OAuth redirect at any route, stores it, then redirects.
 // If signup state exists in sessionStorage, auto-creates the workspace.
@@ -57,9 +59,11 @@ function TokenCapture() {
     // then from sessionStorage (same-origin fallback).
     const wsName = params.get('ws_name')
     const wsSlug = params.get('ws_slug')
+    const signupId = params.get('signup_id')
 
     let networkName = wsName || ''
     let networkSlug = wsSlug || ''
+    let latestSignupId = signupId || ''
 
     if (!networkName || !networkSlug) {
       // Try sessionStorage as fallback (works when same origin)
@@ -69,8 +73,23 @@ function TokenCapture() {
           const signupState = JSON.parse(raw)
           networkName = networkName || signupState.networkName || ''
           networkSlug = networkSlug || signupState.networkSlug || ''
+          latestSignupId = latestSignupId || signupState.attemptId || ''
         } catch { /* ignore */ }
       }
+    } else if (!latestSignupId) {
+      const raw = sessionStorage.getItem(SIGNUP_STORAGE_KEY)
+      if (raw) {
+        try {
+          const signupState = JSON.parse(raw)
+          latestSignupId = signupState.attemptId || ''
+        } catch { /* ignore */ }
+      }
+    }
+
+    if (signupId && latestSignupId && signupId !== latestSignupId) {
+      sessionStorage.removeItem(SIGNUP_STORAGE_KEY)
+      navigate('/signup/customize', { replace: true })
+      return
     }
 
     if (!networkName || !networkSlug) {
@@ -88,6 +107,18 @@ function TokenCapture() {
     }
 
     // Signup flow: create workspace automatically
+    const processedKey = `${SIGNUP_PROCESS_PREFIX}${latestSignupId || `${networkSlug}:${token}`}`
+    const processedState = sessionStorage.getItem(processedKey)
+    if (processedState === 'pending') {
+      setProcessing(true)
+      return
+    }
+    if (processedState === 'done') {
+      sessionStorage.removeItem(SIGNUP_STORAGE_KEY)
+      navigate('/dashboard/groups?setup=true', { replace: true })
+      return
+    }
+    sessionStorage.setItem(processedKey, 'pending')
     setProcessing(true)
 
     fetch(`${API_BASE}/workspaces`, {
@@ -102,6 +133,7 @@ function TokenCapture() {
         if (!res.ok) {
           const text = await res.text()
           if (res.status === 409) {
+            sessionStorage.removeItem(processedKey)
             setError('Network URL already taken. Please choose another.')
             navigate('/signup/customize', { replace: true })
             return
@@ -115,10 +147,12 @@ function TokenCapture() {
         if (data.token) {
           localStorage.setItem('authToken', data.token)
         }
+        sessionStorage.setItem(processedKey, 'done')
         sessionStorage.removeItem(SIGNUP_STORAGE_KEY)
         navigate('/dashboard/groups?setup=true', { replace: true })
       })
       .catch(err => {
+        sessionStorage.removeItem(processedKey)
         setError(err.message)
         setProcessing(false)
       })
@@ -237,6 +271,7 @@ export default function App() {
         </Route>
         <Route path="discovery" element={<NetworkDiscoveryPage />} />
         <Route path="audit-logs" element={<AuditLogsPage />} />
+        <Route path="diagnostics" element={<NetworkDiagnosticsPage />} />
         <Route path="workspace/settings" element={<WorkspaceSettingsPage />} />
       </Route>
     </Routes>

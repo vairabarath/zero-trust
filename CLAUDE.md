@@ -8,7 +8,7 @@ This is a **Twingate-style zero-trust identity and access control management sys
 - A **Go controller** (gRPC, mTLS, SPIFFE IDs) acting as the control plane
 - **Rust connector and tunneler** services for gateway and client roles
 - A **Vite + React + TypeScript** frontend with an Express API server
-- SQLite for both frontend local state and backend persistence
+- **PostgreSQL** for controller backend persistence; **SQLite** (`better-sqlite3`) for frontend-local state only
 
 ## Commands
 
@@ -25,7 +25,7 @@ npm run lint    # ESLint
 
 ```bash
 go build ./...
-go test ./...
+DATABASE_URL="postgres://..." go test ./...  # tests skip if DATABASE_URL is unset
 
 # Run (requires env vars)
 sudo TRUST_DOMAIN="mycorp.internal" \
@@ -71,7 +71,7 @@ All services use SPIFFE IDs under trust domain `spiffe://mycorp.internal`:
 
 Go module name for controller is `controller` (in `services/controller/go.mod`).
 
-Admin HTTP API routes live in `services/controller/admin/` — `handlers.go`, `handlers_remote_networks.go`, `handlers_users.go`, `handlers_discovery.go`, `oauth_invite_handlers.go` for core routes; `ui_handlers.go` for UI-specific endpoints; `ui_routes.go` for routing; `session_helpers.go` for session utilities. gRPC implementations are in `services/controller/api/`.
+Admin HTTP API routes live in `services/controller/admin/` — `handlers_remote_networks.go`, `handlers_users.go`, `handlers_discovery.go`, `oauth_invite_handlers.go` for core routes; UI-specific endpoints split across `ui_access_rules.go`, `ui_connectors.go`, `ui_groups.go`, `ui_resources.go`, `ui_tunnelers.go`, `ui_users.go`, `ui_remote_networks.go`; `ui_routes.go` for routing; `session_helpers.go` for session utilities. gRPC implementations are in `services/controller/api/`.
 
 Protobuf definitions are in `shared/proto/controller.proto`.
 
@@ -99,11 +99,15 @@ Protobuf definitions are in `shared/proto/controller.proto`.
 | `INTERNAL_CA_KEY` | Controller | PEM PKCS#8 CA private key |
 | `CONTROLLER_ADDR` | Connector/Tunneler | `host:port` of controller gRPC |
 | `ADMIN_HTTP_ADDR` | Controller | HTTP listen address (default `:8081`) |
-| `DB_PATH` | Controller | SQLite database path |
+| `DATABASE_URL` | Controller | PostgreSQL connection string (required) |
+| `DB_PATH` | Controller | Legacy SQLite path (ignored — PostgreSQL only) |
 | `TRUST_DOMAIN` | All | SPIFFE trust domain (default: `mycorp.internal`) |
 
 ### Key Design Notes
 
-- **Schema migrations** in `lib/db.ts` handle live upgrades (e.g., adding columns to `access_rules`)
-- **Policy state** (sign-in policy, resource policies, device profiles) is stored in localStorage, not in the database
-- `make dev-controller` loads env from `services/controller/.env` automatically
+- **Controller DB is PostgreSQL-only** — `state.Open()` requires `DATABASE_URL`; `OpenSQLite()` is a no-op stub. Use `state.Rebind()` when writing raw SQL to convert `?` placeholders to `$1, $2, …` for PostgreSQL.
+- **Multi-tenant workspaces** — resources, connectors, tunnelers, access rules, etc. are all scoped by `workspace_id`. The `withWorkspaceContext` middleware extracts workspace claims from a JWT cookie/Bearer token and populates request context.
+- **Schema migrations** — `initSchemaDialect()` in `state/db.go` runs `CREATE TABLE IF NOT EXISTS` for all tables on startup. New columns are added with `ALTER TABLE … ADD COLUMN IF NOT EXISTS` (PostgreSQL) in the same function.
+- **Frontend schema migrations** in `lib/db.ts` handle the frontend SQLite schema.
+- **Policy state** (sign-in policy, resource policies, device profiles) is stored in localStorage, not in the database.
+- `make dev-controller` loads env from `services/controller/.env` automatically.
