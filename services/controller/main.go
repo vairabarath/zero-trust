@@ -105,8 +105,8 @@ func main() {
 	defer db.Close()
 
 	registry := state.NewRegistry()
-	tunnelerRegistry := state.NewTunnelerRegistry()
-	tunnelerStatus := state.NewTunnelerStatusRegistry()
+	agentRegistry := state.NewAgentRegistry()
+	agentStatus := state.NewAgentStatusRegistry()
 	aclStore := state.NewACLStoreWithDB(db)
 	tokenStore := state.NewTokenStoreWithDB(0, db)
 	userStore := state.NewUserStore(db)
@@ -136,9 +136,10 @@ func main() {
 	)
 
 	scanStore := state.NewScanStore()
-	controlPlaneServer := api.NewControlPlaneServer(trustDomain, registry, tunnelerRegistry, tunnelerStatus, aclStore, db, []byte(policySigningKey), policyTTL, scanStore)
+	controlPlaneServer := api.NewControlPlaneServer(trustDomain, registry, agentRegistry, agentStatus, aclStore, db, []byte(policySigningKey), policyTTL, scanStore)
 	_ = state.LoadConnectorsFromDB(db, registry)
-	_ = state.LoadTunnelersFromDB(db, tunnelerStatus)
+	_ = state.LoadAgentRegistryFromDB(db, agentRegistry)
+	_ = state.LoadAgentsFromDB(db, agentStatus)
 	_ = state.LoadACLsFromDB(db, aclStore)
 	controlPlaneServer.NotifyACLInit()
 	go func() {
@@ -204,7 +205,7 @@ func main() {
 	adminServer := &admin.Server{
 		Tokens:            tokenStore,
 		Reg:               registry,
-		Tunnelers:         tunnelerStatus,
+		Agents:            agentStatus,
 		ACLs:              aclStore,
 		ACLNotify:         controlPlaneServer,
 		Users:             userStore,

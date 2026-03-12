@@ -33,16 +33,17 @@ type uiGroupMember struct {
 }
 
 type uiResource struct {
-	ID            string  `json:"id"`
-	Name          string  `json:"name"`
-	Type          string  `json:"type"`
-	Address       string  `json:"address"`
-	Protocol      string  `json:"protocol"`
-	PortFrom      *int    `json:"portFrom"`
-	PortTo        *int    `json:"portTo"`
-	Alias         *string `json:"alias,omitempty"`
-	Description   string  `json:"description"`
-	RemoteNetwork *string `json:"remoteNetworkId,omitempty"`
+	ID             string  `json:"id"`
+	Name           string  `json:"name"`
+	Type           string  `json:"type"`
+	Address        string  `json:"address"`
+	Protocol       string  `json:"protocol"`
+	PortFrom       *int    `json:"portFrom"`
+	PortTo         *int    `json:"portTo"`
+	Alias          *string `json:"alias,omitempty"`
+	Description    string  `json:"description"`
+	RemoteNetwork  *string `json:"remoteNetworkId,omitempty"`
+	FirewallStatus string  `json:"firewallStatus"`
 }
 
 type uiAccessRule struct {
@@ -86,7 +87,7 @@ type uiConnectorLog struct {
 	Message   string `json:"message"`
 }
 
-type uiTunneler struct {
+type uiAgent struct {
 	ID              string `json:"id"`
 	Name            string `json:"name"`
 	Status          string `json:"status"`

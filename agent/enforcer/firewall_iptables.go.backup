@@ -1,0 +1,248 @@
+package enforcer
+
+import (
+	"fmt"
+	"log"
+	"os/exec"
+	"strconv"
+	"sync"
+)
+
+// FirewallEnforcer manages iptables rules for port protection
+type FirewallEnforcer struct {
+	tunName       string
+	protectedPorts map[int]*ProtectionRule
+	mu            sync.RWMutex
+}
+
+// ProtectionRule tracks a protected port
+type ProtectionRule struct {
+	Port      int
+	Protocol  string
+	Active    bool
+	RuleIDs   []string // Track which iptables rules were added
+}
+
+// NewFirewallEnforcer creates a new firewall enforcer
+func NewFirewallEnforcer(tunName string) *FirewallEnforcer {
+	return &FirewallEnforcer{
+		tunName:        tunName,
+		protectedPorts: make(map[int]*ProtectionRule),
+	}
+}
+
+// ProtectPort applies firewall rules to protect a port
+func (f *FirewallEnforcer) ProtectPort(port int, protocol string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	// Check if already protected
+	if rule, exists := f.protectedPorts[port]; exists && rule.Active {
+		return fmt.Errorf("port %d is already protected", port)
+	}
+
+	portStr := strconv.Itoa(port)
+
+	log.Printf("Applying firewall rules for port %d (%s)...", port, protocol)
+
+	// Rule 1: ACCEPT from localhost
+	if err := f.appendRule("INPUT", []string{
+		"-i", "lo",
+		"-p", "tcp",
+		"--dport", portStr,
+		"-j", "ACCEPT",
+	}); err != nil {
+		return fmt.Errorf("failed to add localhost rule: %v", err)
+	}
+
+	// Rule 2: ACCEPT from TUN interface
+	if err := f.appendRule("INPUT", []string{
+		"-i", f.tunName,
+		"-p", "tcp",
+		"--dport", portStr,
+		"-j", "ACCEPT",
+	}); err != nil {
+		// Rollback rule 1
+		f.deleteRule("INPUT", []string{"-i", "lo", "-p", "tcp", "--dport", portStr, "-j", "ACCEPT"})
+		return fmt.Errorf("failed to add TUN rule: %v", err)
+	}
+
+	// Rule 3: DROP everything else
+	if err := f.appendRule("INPUT", []string{
+		"-p", "tcp",
+		"--dport", portStr,
+		"-j", "DROP",
+	}); err != nil {
+		// Rollback
+		f.deleteRule("INPUT", []string{"-i", "lo", "-p", "tcp", "--dport", portStr, "-j", "ACCEPT"})
+		f.deleteRule("INPUT", []string{"-i", f.tunName, "-p", "tcp", "--dport", portStr, "-j", "ACCEPT"})
+		return fmt.Errorf("failed to add DROP rule: %v", err)
+	}
+
+	// Block IPv6 as well
+	f.blockIPv6(portStr)
+
+	// Store the rule
+	f.protectedPorts[port] = &ProtectionRule{
+		Port:     port,
+		Protocol: protocol,
+		Active:   true,
+	}
+
+	log.Printf("✓ Port %d is now protected", port)
+	return nil
+}
+
+// UnprotectPort removes firewall rules for a port
+func (f *FirewallEnforcer) UnprotectPort(port int) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	rule, exists := f.protectedPorts[port]
+	if !exists || !rule.Active {
+		return fmt.Errorf("port %d is not protected", port)
+	}
+
+	portStr := strconv.Itoa(port)
+
+	log.Printf("Removing firewall rules for port %d...", port)
+
+	// Remove rules (order doesn't matter for deletion)
+	errors := []error{}
+
+	if err := f.deleteRule("INPUT", []string{
+		"-p", "tcp", "--dport", portStr, "-j", "DROP",
+	}); err != nil {
+		errors = append(errors, err)
+	}
+
+	if err := f.deleteRule("INPUT", []string{
+		"-i", f.tunName, "-p", "tcp", "--dport", portStr, "-j", "ACCEPT",
+	}); err != nil {
+		errors = append(errors, err)
+	}
+
+	if err := f.deleteRule("INPUT", []string{
+		"-i", "lo", "-p", "tcp", "--dport", portStr, "-j", "ACCEPT",
+	}); err != nil {
+		errors = append(errors, err)
+	}
+
+	// Remove IPv6 rule
+	f.unblockIPv6(portStr)
+
+	if len(errors) > 0 {
+		log.Printf("⚠️  Some rules failed to remove: %v", errors)
+	}
+
+	// Mark as inactive
+	rule.Active = false
+	delete(f.protectedPorts, port)
+
+	log.Printf("✓ Port %d is now unprotected", port)
+	return nil
+}
+
+// GetProtectedPorts returns list of currently protected ports
+func (f *FirewallEnforcer) GetProtectedPorts() []int {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+
+	ports := make([]int, 0, len(f.protectedPorts))
+	for port, rule := range f.protectedPorts {
+		if rule.Active {
+			ports = append(ports, port)
+		}
+	}
+	return ports
+}
+
+// IsPortProtected checks if a port is protected
+func (f *FirewallEnforcer) IsPortProtected(port int) bool {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+
+	rule, exists := f.protectedPorts[port]
+	return exists && rule.Active
+}
+
+// appendRule adds an iptables rule
+func (f *FirewallEnforcer) appendRule(chain string, args []string) error {
+	fullArgs := append([]string{"-A", chain}, args...)
+	cmd := exec.Command("iptables", fullArgs...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("iptables error: %v, output: %s", err, string(output))
+	}
+	return nil
+}
+
+// deleteRule removes an iptables rule
+func (f *FirewallEnforcer) deleteRule(chain string, args []string) error {
+	fullArgs := append([]string{"-D", chain}, args...)
+	cmd := exec.Command("iptables", fullArgs...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("iptables error: %v, output: %s", err, string(output))
+	}
+	return nil
+}
+
+// blockIPv6 blocks IPv6 traffic to a port
+func (f *FirewallEnforcer) blockIPv6(port string) {
+	cmd := exec.Command("ip6tables", "-A", "INPUT", "-p", "tcp", "--dport", port, "-j", "DROP")
+	if err := cmd.Run(); err != nil {
+		log.Printf("⚠️  Could not apply IPv6 rules (this is OK if IPv6 is disabled): %v", err)
+	}
+}
+
+// unblockIPv6 removes IPv6 block
+func (f *FirewallEnforcer) unblockIPv6(port string) {
+	cmd := exec.Command("ip6tables", "-D", "INPUT", "-p", "tcp", "--dport", port, "-j", "DROP")
+	cmd.Run() // Best effort
+}
+
+// VerifyRules checks if firewall rules are still in place
+func (f *FirewallEnforcer) VerifyRules() error {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+
+	for port, rule := range f.protectedPorts {
+		if !rule.Active {
+			continue
+		}
+
+		// Check if DROP rule exists
+		portStr := strconv.Itoa(port)
+		cmd := exec.Command("iptables", "-C", "INPUT", "-p", "tcp", "--dport", portStr, "-j", "DROP")
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("firewall rule missing for port %d", port)
+		}
+	}
+
+	return nil
+}
+
+// CleanupAll removes all protection rules
+func (f *FirewallEnforcer) CleanupAll() error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	log.Println("Cleaning up all firewall rules...")
+
+	var lastError error
+	for port := range f.protectedPorts {
+		portStr := strconv.Itoa(port)
+
+		// Best effort removal
+		f.deleteRule("INPUT", []string{"-p", "tcp", "--dport", portStr, "-j", "DROP"})
+		f.deleteRule("INPUT", []string{"-i", f.tunName, "-p", "tcp", "--dport", portStr, "-j", "ACCEPT"})
+		f.deleteRule("INPUT", []string{"-i", "lo", "-p", "tcp", "--dport", portStr, "-j", "ACCEPT"})
+		f.unblockIPv6(portStr)
+	}
+
+	f.protectedPorts = make(map[int]*ProtectionRule)
+	log.Println("✓ Firewall cleanup complete")
+
+	return lastError
+}

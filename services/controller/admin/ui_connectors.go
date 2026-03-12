@@ -77,15 +77,43 @@ func (s *Server) handleUIConnectorsSubroutes(w http.ResponseWriter, r *http.Requ
 	connectorID := parts[0]
 	if len(parts) == 1 {
 		if r.Method == http.MethodDelete {
+			// Cascade-delete agents (tunnelers) bound to this connector.
+			var agentIDs []string
+			aRows, _ := db.Query(state.Rebind(`SELECT id FROM tunnelers WHERE connector_id = ?`), connectorID)
+			if aRows != nil {
+				for aRows.Next() {
+					var aid string
+					if err := aRows.Scan(&aid); err == nil {
+						agentIDs = append(agentIDs, aid)
+					}
+				}
+				aRows.Close()
+			}
+			for _, aid := range agentIDs {
+				if s.Agents != nil {
+					s.Agents.Delete(aid)
+				}
+			}
+			_, _ = db.Exec(state.Rebind(`DELETE FROM tunnelers WHERE connector_id = ?`), connectorID)
+
+			// Delete connector tokens, logs, and policy versions.
+			if s.Tokens != nil {
+				_ = s.Tokens.DeleteByConnectorID(connectorID)
+			}
+			_, _ = db.Exec(state.Rebind(`DELETE FROM tokens WHERE connector_id = ?`), connectorID)
+			_, _ = db.Exec(state.Rebind(`DELETE FROM connector_logs WHERE connector_id = ?`), connectorID)
+			_, _ = db.Exec(state.Rebind(`DELETE FROM connector_policy_versions WHERE connector_id = ?`), connectorID)
+			_, _ = db.Exec(state.Rebind(`DELETE FROM remote_network_connectors WHERE connector_id = ?`), connectorID)
+
+			// Remove connector from in-memory registry and DB.
 			if s.Reg != nil {
 				s.Reg.Delete(connectorID)
 			}
 			if s.ACLs != nil && s.ACLs.DB() != nil {
 				_ = state.DeleteConnectorFromDB(s.ACLs.DB(), connectorID)
 			}
-			if s.Tokens != nil {
-				_ = s.Tokens.DeleteByConnectorID(connectorID)
-			}
+			_, _ = db.Exec(state.Rebind(`DELETE FROM connectors WHERE id = ?`), connectorID)
+
 			writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 			return
 		}
