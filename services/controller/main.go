@@ -113,6 +113,13 @@ func main() {
 	remoteNetStore := state.NewRemoteNetworkStore(db)
 	workspaceStore := state.NewWorkspaceStore(db)
 
+	idpEncKey := []byte(os.Getenv("IDP_ENCRYPTION_KEY"))
+	if len(idpEncKey) == 0 {
+		idpEncKey = []byte(os.Getenv("JWT_SECRET"))
+	}
+	idpStore := state.NewIdentityProviderStore(db, idpEncKey)
+	sessionStore := state.NewSessionStore(db)
+
 	systemDomain := os.Getenv("SYSTEM_DOMAIN")
 	if systemDomain == "" {
 		systemDomain = "zerotrust.com"
@@ -162,10 +169,15 @@ func main() {
 	controllerpb.RegisterControlPlaneServer(grpcServer, controlPlaneServer)
 
 	// ---- OAuth + mailer config (optional) ----
-	var oauthCfg = admin.BuildOAuthConfig(
+	var oauthCfg = admin.BuildGoogleOAuthConfig(
 		os.Getenv("GOOGLE_CLIENT_ID"),
 		os.Getenv("GOOGLE_CLIENT_SECRET"),
 		os.Getenv("OAUTH_REDIRECT_URL"),
+	)
+	var githubOAuthCfg = admin.BuildGitHubOAuthConfig(
+		os.Getenv("GITHUB_CLIENT_ID"),
+		os.Getenv("GITHUB_CLIENT_SECRET"),
+		os.Getenv("GITHUB_OAUTH_REDIRECT_URL"),
 	)
 
 	adminLoginEmails := map[string]struct{}{}
@@ -204,6 +216,7 @@ func main() {
 		InternalAuthToken: internalAuthToken,
 		CACertPEM:         caCertPEM,
 		OAuthConfig:       oauthCfg,
+		GitHubOAuthConfig: githubOAuthCfg,
 		JWTSecret:         []byte(os.Getenv("JWT_SECRET")),
 		AdminLoginEmails:  adminLoginEmails,
 		DashboardURL:      os.Getenv("DASHBOARD_URL"),
@@ -212,9 +225,22 @@ func main() {
 		Workspaces:        workspaceStore,
 		IntermediateCA:    caInst,
 		SystemDomain:      systemDomain,
+		IdPs:              idpStore,
+		Sessions:          sessionStore,
+		SecureCookies:     os.Getenv("SECURE_COOKIES") == "true",
+		AllowedOrigins:    parseAllowedOrigins(os.Getenv("ALLOWED_ORIGINS")),
 	}
 	adminServer.RegisterRoutes(adminMux)
 	adminServer.RegisterOAuthRoutes(adminMux)
+	go func() {
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			if err := sessionStore.CleanExpired(); err != nil {
+				log.Printf("session cleanup: %v", err)
+			}
+		}
+	}()
 	go func() {
 		log.Printf("admin HTTP server listening %s", adminAddr)
 		if err := http.ListenAndServe(adminAddr, adminMux); err != nil {
@@ -263,6 +289,19 @@ func loadCAFromFiles(certPEM, keyPEM []byte) ([]byte, []byte) {
 		}
 	}
 	return certPEM, keyPEM
+}
+
+func parseAllowedOrigins(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+	var out []string
+	for _, o := range strings.Split(raw, ",") {
+		if o = strings.TrimSpace(o); o != "" {
+			out = append(out, o)
+		}
+	}
+	return out
 }
 
 func normalizeTrustDomain(v string) string {

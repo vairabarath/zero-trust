@@ -19,9 +19,20 @@ func (s *Server) handleUIUsers(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodGet:
-		rows, err := db.Query(`SELECT id, name, email, status, certificate_identity,
-			CAST(created_at AS TEXT) as created_at
-			FROM users ORDER BY name ASC`)
+		wsID := workspaceIDFromContext(r.Context())
+		var rows *sql.Rows
+		var err error
+		if wsID != "" {
+			rows, err = db.Query(state.Rebind(`SELECT u.id, u.name, u.email, u.status, u.certificate_identity,
+				CAST(u.created_at AS TEXT) as created_at, COALESCE(wm.role, 'member') as role
+				FROM users u
+				LEFT JOIN workspace_members wm ON wm.user_id = u.id AND wm.workspace_id = ?
+				ORDER BY u.name ASC`), wsID)
+		} else {
+			rows, err = db.Query(`SELECT id, name, email, status, certificate_identity,
+				CAST(created_at AS TEXT) as created_at, 'member' as role
+				FROM users ORDER BY name ASC`)
+		}
 		if err != nil {
 			http.Error(w, "failed to list users", http.StatusInternalServerError)
 			return
@@ -35,10 +46,10 @@ func (s *Server) handleUIUsers(w http.ResponseWriter, r *http.Request) {
 		defer groupStmt.Close()
 		out := []uiUser{}
 		for rows.Next() {
-			var id, name, email, status string
+			var id, name, email, status, role string
 			var certID sql.NullString
 			var created sql.NullString
-			if err := rows.Scan(&id, &name, &email, &status, &certID, &created); err != nil {
+			if err := rows.Scan(&id, &name, &email, &status, &certID, &created, &role); err != nil {
 				http.Error(w, "failed to read users", http.StatusInternalServerError)
 				return
 			}
@@ -62,6 +73,7 @@ func (s *Server) handleUIUsers(w http.ResponseWriter, r *http.Request) {
 				DisplayLabel:        fmt.Sprintf("User: %s", name),
 				Email:               email,
 				Status:              strings.ToLower(status),
+				Role:                role,
 				Groups:              groups,
 				CertificateIdentity: certID.String,
 				CreatedAt:           createdAt,
@@ -69,6 +81,7 @@ func (s *Server) handleUIUsers(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, http.StatusOK, out)
 	case http.MethodPost:
+		wsID := workspaceIDFromContext(r.Context())
 		var req struct {
 			Name   string `json:"name"`
 			Email  string `json:"email"`
@@ -94,6 +107,11 @@ func (s *Server) handleUIUsers(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "failed to create user", http.StatusBadRequest)
 			return
 		}
+		// Link user to current workspace
+		if wsID != "" {
+			_, _ = db.Exec(state.Rebind(`INSERT INTO workspace_members (workspace_id, user_id, role, joined_at) VALUES (?, ?, 'member', ?)`),
+				wsID, id, time.Now().UTC().Format(time.RFC3339))
+		}
 		if s.ACLNotify != nil {
 			s.ACLNotify.NotifyPolicyChange()
 		}
@@ -108,6 +126,26 @@ func (s *Server) handleUIUsers(w http.ResponseWriter, r *http.Request) {
 			CertificateIdentity: certID,
 			CreatedAt:           dateStringFromUnix(createdAt),
 		})
+	case http.MethodDelete:
+		userID := r.URL.Query().Get("id")
+		if userID == "" {
+			http.Error(w, "user id required", http.StatusBadRequest)
+			return
+		}
+		wsID := workspaceIDFromContext(r.Context())
+		if wsID != "" {
+			_, err := db.Exec(state.Rebind(`DELETE FROM workspace_members WHERE workspace_id = ? AND user_id = ?`), wsID, userID)
+			if err != nil {
+				http.Error(w, "failed to delete user from workspace", http.StatusInternalServerError)
+				return
+			}
+		}
+		_, err := db.Exec(state.Rebind(`DELETE FROM users WHERE id = ?`), userID)
+		if err != nil {
+			http.Error(w, "failed to delete user", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -122,10 +160,16 @@ func (s *Server) handleUISubjects(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	wsID := workspaceIDFromContext(r.Context())
 	subjectType := strings.ToUpper(r.URL.Query().Get("type"))
 	subjects := []uiSubject{}
 	if subjectType == "" || subjectType == "USER" {
-		rows, _ := db.Query(`SELECT id, name FROM users ORDER BY name ASC`)
+		var rows *sql.Rows
+		if wsID != "" {
+			rows, _ = db.Query(state.Rebind(`SELECT u.id, u.name FROM users u JOIN workspace_members wm ON wm.user_id = u.id AND wm.workspace_id = ? ORDER BY u.name ASC`), wsID)
+		} else {
+			rows, _ = db.Query(`SELECT id, name FROM users ORDER BY name ASC`)
+		}
 		if rows != nil {
 			for rows.Next() {
 				var id, name string
@@ -137,7 +181,8 @@ func (s *Server) handleUISubjects(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if subjectType == "" || subjectType == "GROUP" {
-		rows, _ := db.Query(`SELECT id, name FROM user_groups ORDER BY name ASC`)
+		wsClause, wsArgs := wsWhereOnly(wsID, "")
+		rows, _ := db.Query(state.Rebind(`SELECT id, name FROM user_groups`+wsClause+` ORDER BY name ASC`), wsArgs...)
 		if rows != nil {
 			for rows.Next() {
 				var id, name string
@@ -149,7 +194,8 @@ func (s *Server) handleUISubjects(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if subjectType == "" || subjectType == "SERVICE" {
-		rows, _ := db.Query(`SELECT id, name FROM service_accounts ORDER BY name ASC`)
+		wsClause, wsArgs := wsWhereOnly(wsID, "")
+		rows, _ := db.Query(state.Rebind(`SELECT id, name FROM service_accounts`+wsClause+` ORDER BY name ASC`), wsArgs...)
 		if rows != nil {
 			for rows.Next() {
 				var id, name string
@@ -172,9 +218,11 @@ func (s *Server) handleUIServiceAccounts(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	rows, err := db.Query(`SELECT id, name, status, associated_resource_count,
+	wsID := workspaceIDFromContext(r.Context())
+	wsClause, wsArgs := wsWhereOnly(wsID, "")
+	rows, err := db.Query(state.Rebind(`SELECT id, name, status, associated_resource_count,
 		CAST(created_at AS TEXT) as created_at
-		FROM service_accounts ORDER BY name ASC`)
+		FROM service_accounts`+wsClause+` ORDER BY name ASC`), wsArgs...)
 	if err != nil {
 		http.Error(w, "failed to list service accounts", http.StatusInternalServerError)
 		return

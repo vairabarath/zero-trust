@@ -2,6 +2,7 @@
 .PHONY: dev-controller dev-connector dev-agent dev-frontend
 .PHONY: test-all test-controller test-connector test-agent test-frontend
 .PHONY: clean clean-all
+.PHONY: build-ztna-client dev-ztna-client
 
 help:
 	@echo "ZTNA Project - Development Commands"
@@ -31,7 +32,7 @@ help:
 	@echo "  make clean-all        - Clean everything including deps"
 
 # Build Commands
-build-all: build-controller build-connector build-agent build-frontend
+build-all: build-controller build-connector build-agent build-tunneler build-ztna-client build-frontend
 
 build-controller:
 	@echo "Building controller..."
@@ -48,6 +49,12 @@ build-agent:
 	cd services/agent && cargo build --release
 	mkdir -p dist
 	cp services/agent/target/release/agent dist/
+
+build-ztna-client:
+	@echo "Building ztna-client..."
+	cd services/ztna-client && cargo build --release
+	mkdir -p dist
+	cp services/ztna-client/target/release/ztna-client dist/
 
 build-frontend:
 	@echo "Building frontend..."
@@ -66,6 +73,10 @@ dev-connector:
 dev-agent:
 	@echo "Running agent in dev mode..."
 	cd services/agent && cargo run
+
+dev-ztna-client:
+	@echo "Running ztna-client in dev mode..."
+	cd services/ztna-client && cargo run -- --controller-url http://localhost:8081
 
 dev-frontend:
 	@echo "Running frontend in dev mode..."

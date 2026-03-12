@@ -1,5 +1,5 @@
 import { Navigate, Route, Routes, useNavigate, useLocation } from 'react-router-dom'
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import DashboardLayout from './pages/DashboardLayout'
 import LoginPage from './pages/Login'
 import GroupsPage from './pages/groups/GroupsPage'
@@ -24,22 +24,147 @@ import NetworkDiscoveryPage from './pages/resources/NetworkDiscoveryPage'
 import WorkspaceSelectorPage from './pages/workspaces/WorkspaceSelectorPage'
 import WorkspaceCreatePage from './pages/workspaces/WorkspaceCreatePage'
 import WorkspaceSettingsPage from './pages/workspaces/WorkspaceSettingsPage'
-import { getWorkspaceClaims } from '@/lib/jwt'
+import SignupLayout from './pages/signup/SignupLayout'
+import SignupPage from './pages/signup/SignupPage'
+import SignupCustomizePage from './pages/signup/SignupCustomizePage'
+import SignupFinalizePage from './pages/signup/SignupFinalizePage'
+import SignupAuthPage from './pages/signup/SignupAuthPage'
+import UserLayout from './pages/app/UserLayout'
+import UserHomePage from './pages/app/UserHomePage'
+import WelcomePage from './pages/app/WelcomePage'
+import InstallPage from './pages/app/InstallPage'
+import { STORAGE_KEY as SIGNUP_STORAGE_KEY } from './contexts/SignupContext'
+import { getWorkspaceClaims, isDeviceToken, getAudience } from '@/lib/jwt'
+import IdentityProvidersPage from './pages/settings/IdentityProvidersPage'
+import SessionsPage from './pages/settings/SessionsPage'
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api'
 
 // Captures ?token= from OAuth redirect at any route, stores it, then redirects.
+// If signup state exists in sessionStorage, auto-creates the workspace.
 function TokenCapture() {
+  const navigate = useNavigate()
+  const [processing, setProcessing] = useState(false)
+  const [error, setError] = useState('')
+
   const params = new URLSearchParams(window.location.search)
   const token = params.get('token')
-  if (token) {
+
+  useEffect(() => {
+    if (!token) return
+
     localStorage.setItem('authToken', token)
-    // If token has workspace claims, go to dashboard; otherwise workspace selector
-    const claims = getWorkspaceClaims(token)
-    if (claims) {
-      return <Navigate to="/dashboard/groups" replace />
+
+    // Check for workspace data: first from URL params (passed through OAuth state),
+    // then from sessionStorage (same-origin fallback).
+    const wsName = params.get('ws_name')
+    const wsSlug = params.get('ws_slug')
+
+    let networkName = wsName || ''
+    let networkSlug = wsSlug || ''
+
+    if (!networkName || !networkSlug) {
+      // Try sessionStorage as fallback (works when same origin)
+      const raw = sessionStorage.getItem(SIGNUP_STORAGE_KEY)
+      if (raw) {
+        try {
+          const signupState = JSON.parse(raw)
+          networkName = networkName || signupState.networkName || ''
+          networkSlug = networkSlug || signupState.networkSlug || ''
+        } catch { /* ignore */ }
+      }
     }
+
+    if (!networkName || !networkSlug) {
+      sessionStorage.removeItem(SIGNUP_STORAGE_KEY)
+
+      const aud = getAudience(token)
+      const claims = getWorkspaceClaims(token)
+
+      if (aud === 'device') {
+        navigate('/app', { replace: true })
+      } else if (aud === 'admin' && claims) {
+        if (claims.wrole === 'member') {
+          navigate('/app', { replace: true })
+        } else {
+          navigate('/dashboard/groups', { replace: true })
+        }
+      } else if (!claims) {
+        navigate('/workspaces', { replace: true })
+      } else if (claims.wrole === 'admin' || claims.wrole === 'owner') {
+        navigate('/dashboard/groups', { replace: true })
+      } else {
+        navigate('/app', { replace: true })
+      }
+      return
+    }
+
+    // Signup flow: create workspace automatically
+    setProcessing(true)
+
+    fetch(`${API_BASE}/workspaces`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ name: networkName, slug: networkSlug }),
+    })
+      .then(async res => {
+        if (!res.ok) {
+          const text = await res.text()
+          if (res.status === 409) {
+            setError('Network URL already taken. Please choose another.')
+            navigate('/signup/customize', { replace: true })
+            return
+          }
+          throw new Error(text || 'Failed to create workspace')
+        }
+        return res.json()
+      })
+      .then(data => {
+        if (!data) return
+        if (data.token) {
+          localStorage.setItem('authToken', data.token)
+        }
+        sessionStorage.removeItem(SIGNUP_STORAGE_KEY)
+        navigate('/dashboard/groups?setup=true', { replace: true })
+      })
+      .catch(err => {
+        setError(err.message)
+        setProcessing(false)
+      })
+  }, [token, navigate])
+
+  if (!token) {
     return <Navigate to="/workspaces" replace />
   }
-  return <Navigate to="/workspaces" replace />
+
+  if (error) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="w-full max-w-md space-y-4 rounded-xl border bg-card p-8 shadow-sm">
+          <p className="text-sm text-destructive">{error}</p>
+          <button
+            className="text-sm text-primary hover:underline"
+            onClick={() => navigate('/workspaces', { replace: true })}
+          >
+            Go to workspaces
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (processing) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <p className="text-sm text-muted-foreground">Setting up your network...</p>
+      </div>
+    )
+  }
+
+  return null
 }
 
 function AuthGuard({ children }: { children: ReactNode }) {
@@ -52,12 +177,38 @@ function AuthGuard({ children }: { children: ReactNode }) {
       navigate('/login', { replace: true })
       return
     }
-    // If JWT has no workspace claims, redirect to workspace selector
+    // Device tokens cannot access admin dashboard
+    if (isDeviceToken(token) && location.pathname.startsWith('/dashboard')) {
+      navigate('/app', { replace: true })
+      return
+    }
     const claims = getWorkspaceClaims(token)
     if (!claims && location.pathname.startsWith('/dashboard')) {
       navigate('/workspaces', { replace: true })
+      return
+    }
+    if (claims && claims.wrole === 'member' && location.pathname.startsWith('/dashboard')) {
+      navigate('/app', { replace: true })
     }
   }, [navigate, location.pathname])
+
+  return <>{children}</>
+}
+
+function UserAuthGuard({ children }: { children: ReactNode }) {
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    const token = localStorage.getItem('authToken')
+    if (!token) {
+      navigate('/login', { replace: true })
+      return
+    }
+    const claims = getWorkspaceClaims(token)
+    if (!claims) {
+      navigate('/workspaces', { replace: true })
+    }
+  }, [navigate])
 
   return <>{children}</>
 }
@@ -67,8 +218,19 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/" element={<TokenCapture />} />
+      <Route path="/signup" element={<SignupLayout />}>
+        <Route index element={<SignupPage />} />
+        <Route path="customize" element={<SignupCustomizePage />} />
+        <Route path="finalize" element={<SignupFinalizePage />} />
+        <Route path="auth" element={<SignupAuthPage />} />
+      </Route>
       <Route path="/workspaces" element={<WorkspaceSelectorPage />} />
       <Route path="/workspaces/create" element={<WorkspaceCreatePage />} />
+      <Route path="/app" element={<UserAuthGuard><UserLayout /></UserAuthGuard>}>
+        <Route index element={<UserHomePage />} />
+        <Route path="welcome" element={<WelcomePage />} />
+        <Route path="install" element={<InstallPage />} />
+      </Route>
       <Route path="/dashboard" element={<AuthGuard><DashboardLayout /></AuthGuard>}>
         <Route index element={<Navigate to="groups" replace />} />
         <Route path="groups" element={<GroupsPage />} />
@@ -93,6 +255,8 @@ export default function App() {
         <Route path="discovery" element={<NetworkDiscoveryPage />} />
         <Route path="audit-logs" element={<AuditLogsPage />} />
         <Route path="workspace/settings" element={<WorkspaceSettingsPage />} />
+        <Route path="workspace/settings/identity-providers" element={<IdentityProvidersPage />} />
+        <Route path="workspace/settings/sessions" element={<SessionsPage />} />
       </Route>
     </Routes>
   )
