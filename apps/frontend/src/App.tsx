@@ -11,8 +11,9 @@ import ConnectorsPage from './pages/connectors/ConnectorsPage'
 import ConnectorDetailPage from './pages/connectors/ConnectorDetailPage'
 import RemoteNetworksPage from './pages/remote-networks/RemoteNetworksPage'
 import NetworkDetailPage from './pages/remote-networks/NetworkDetailPage'
-import TunnelersPage from './pages/tunnelers/TunnelersPage'
-import TunnelerDetailPage from './pages/tunnelers/TunnelerDetailPage'
+import AgentsPage from './pages/agents/AgentsPage'
+import NewAgentPage from './pages/agents/NewAgentPage'
+import AgentDetailPage from './pages/agents/AgentDetailPage'
 import PolicyLayout from './pages/policy/PolicyLayout'
 import ResourcePoliciesPage from './pages/policy/ResourcePoliciesPage'
 import ResourcePolicyDetailPage from './pages/policy/ResourcePolicyDetailPage'
@@ -28,8 +29,14 @@ import SignupPage from './pages/signup/SignupPage'
 import SignupCustomizePage from './pages/signup/SignupCustomizePage'
 import SignupFinalizePage from './pages/signup/SignupFinalizePage'
 import SignupAuthPage from './pages/signup/SignupAuthPage'
-import { getWorkspaceClaims } from '@/lib/jwt'
+import UserLayout from './pages/app/UserLayout'
+import UserHomePage from './pages/app/UserHomePage'
+import WelcomePage from './pages/app/WelcomePage'
+import InstallPage from './pages/app/InstallPage'
 import { STORAGE_KEY as SIGNUP_STORAGE_KEY } from './contexts/SignupContext'
+import { getWorkspaceClaims, isDeviceToken, getAudience } from '@/lib/jwt'
+import IdentityProvidersPage from './pages/settings/IdentityProvidersPage'
+import SessionsPage from './pages/settings/SessionsPage'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api'
 
@@ -69,13 +76,25 @@ function TokenCapture() {
     }
 
     if (!networkName || !networkSlug) {
-      // No signup flow — existing behavior
       sessionStorage.removeItem(SIGNUP_STORAGE_KEY)
+
+      const aud = getAudience(token)
       const claims = getWorkspaceClaims(token)
-      if (claims) {
+
+      if (aud === 'device') {
+        navigate('/app', { replace: true })
+      } else if (aud === 'admin' && claims) {
+        if (claims.wrole === 'member') {
+          navigate('/app', { replace: true })
+        } else {
+          navigate('/dashboard/groups', { replace: true })
+        }
+      } else if (!claims) {
+        navigate('/workspaces', { replace: true })
+      } else if (claims.wrole === 'admin' || claims.wrole === 'owner') {
         navigate('/dashboard/groups', { replace: true })
       } else {
-        navigate('/workspaces', { replace: true })
+        navigate('/app', { replace: true })
       }
       return
     }
@@ -158,12 +177,38 @@ function AuthGuard({ children }: { children: ReactNode }) {
       navigate('/login', { replace: true })
       return
     }
-    // If JWT has no workspace claims, redirect to workspace selector
+    // Device tokens cannot access admin dashboard
+    if (isDeviceToken(token) && location.pathname.startsWith('/dashboard')) {
+      navigate('/app', { replace: true })
+      return
+    }
     const claims = getWorkspaceClaims(token)
     if (!claims && location.pathname.startsWith('/dashboard')) {
       navigate('/workspaces', { replace: true })
+      return
+    }
+    if (claims && claims.wrole === 'member' && location.pathname.startsWith('/dashboard')) {
+      navigate('/app', { replace: true })
     }
   }, [navigate, location.pathname])
+
+  return <>{children}</>
+}
+
+function UserAuthGuard({ children }: { children: ReactNode }) {
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    const token = localStorage.getItem('authToken')
+    if (!token) {
+      navigate('/login', { replace: true })
+      return
+    }
+    const claims = getWorkspaceClaims(token)
+    if (!claims) {
+      navigate('/workspaces', { replace: true })
+    }
+  }, [navigate])
 
   return <>{children}</>
 }
@@ -181,6 +226,11 @@ export default function App() {
       </Route>
       <Route path="/workspaces" element={<WorkspaceSelectorPage />} />
       <Route path="/workspaces/create" element={<WorkspaceCreatePage />} />
+      <Route path="/app" element={<UserAuthGuard><UserLayout /></UserAuthGuard>}>
+        <Route index element={<UserHomePage />} />
+        <Route path="welcome" element={<WelcomePage />} />
+        <Route path="install" element={<InstallPage />} />
+      </Route>
       <Route path="/dashboard" element={<AuthGuard><DashboardLayout /></AuthGuard>}>
         <Route index element={<Navigate to="groups" replace />} />
         <Route path="groups" element={<GroupsPage />} />
@@ -192,8 +242,9 @@ export default function App() {
         <Route path="connectors/:connectorId" element={<ConnectorDetailPage />} />
         <Route path="remote-networks" element={<RemoteNetworksPage />} />
         <Route path="remote-networks/:networkId" element={<NetworkDetailPage />} />
-        <Route path="tunnelers" element={<TunnelersPage />} />
-        <Route path="tunnelers/:tunnelerId" element={<TunnelerDetailPage />} />
+        <Route path="agents" element={<AgentsPage />} />
+        <Route path="agents/new" element={<NewAgentPage />} />
+        <Route path="agents/:agentId" element={<AgentDetailPage />} />
         <Route path="policy" element={<PolicyLayout />}>
           <Route index element={<Navigate to="resource-policies" replace />} />
           <Route path="resource-policies" element={<ResourcePoliciesPage />} />
@@ -204,6 +255,8 @@ export default function App() {
         <Route path="discovery" element={<NetworkDiscoveryPage />} />
         <Route path="audit-logs" element={<AuditLogsPage />} />
         <Route path="workspace/settings" element={<WorkspaceSettingsPage />} />
+        <Route path="workspace/settings/identity-providers" element={<IdentityProvidersPage />} />
+        <Route path="workspace/settings/sessions" element={<SessionsPage />} />
       </Route>
     </Routes>
   )

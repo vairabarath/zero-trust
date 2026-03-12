@@ -102,7 +102,8 @@ func initSchemaDialect(db *sql.DB, dialect string) error {
 			alias TEXT,
 			description TEXT NOT NULL DEFAULT '',
 			remote_network_id TEXT NOT NULL DEFAULT '',
-			connector_id TEXT NOT NULL DEFAULT ''
+			connector_id TEXT NOT NULL DEFAULT '',
+			firewall_status TEXT NOT NULL DEFAULT 'unprotected'
 		)`,
 		`CREATE TABLE IF NOT EXISTS authorizations (
 			resource_id TEXT NOT NULL,
@@ -240,6 +241,40 @@ func initSchemaDialect(db *sql.DB, dialect string) error {
 			expires_at INTEGER NOT NULL DEFAULT 0,
 			used INTEGER NOT NULL DEFAULT 0
 		)`,
+		`CREATE TABLE IF NOT EXISTS identity_providers (
+			id TEXT PRIMARY KEY,
+			workspace_id TEXT NOT NULL DEFAULT '',
+			provider_type TEXT NOT NULL,
+			client_id TEXT NOT NULL,
+			client_secret_encrypted TEXT NOT NULL,
+			redirect_uri TEXT NOT NULL DEFAULT '',
+			issuer_url TEXT NOT NULL DEFAULT '',
+			enabled INTEGER NOT NULL DEFAULT 1,
+			created_at TEXT NOT NULL DEFAULT '',
+			updated_at TEXT NOT NULL DEFAULT ''
+		)`,
+		`CREATE TABLE IF NOT EXISTS sessions (
+			id TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL,
+			workspace_id TEXT NOT NULL DEFAULT '',
+			session_type TEXT NOT NULL,
+			device_id TEXT NOT NULL DEFAULT '',
+			refresh_token_hash TEXT NOT NULL DEFAULT '',
+			ip_address TEXT NOT NULL DEFAULT '',
+			user_agent TEXT NOT NULL DEFAULT '',
+			created_at INTEGER NOT NULL DEFAULT 0,
+			expires_at INTEGER NOT NULL DEFAULT 0,
+			revoked INTEGER NOT NULL DEFAULT 0
+		)`,
+		`CREATE TABLE IF NOT EXISTS device_auth_requests (
+			state TEXT PRIMARY KEY,
+			workspace_id TEXT NOT NULL,
+			code_challenge TEXT NOT NULL,
+			redirect_uri TEXT NOT NULL,
+			idp_id TEXT NOT NULL DEFAULT '',
+			created_at INTEGER NOT NULL DEFAULT 0,
+			expires_at INTEGER NOT NULL DEFAULT 0
+		)`,
 	}
 
 	for _, s := range stmts {
@@ -261,6 +296,14 @@ func initSchemaDialect(db *sql.DB, dialect string) error {
 		return err
 	}
 
+	// Phase 3 migration: add firewall_status column to resources.
+	if dialect == "postgres" {
+		_, _ = db.Exec(`ALTER TABLE resources ADD COLUMN IF NOT EXISTS firewall_status TEXT NOT NULL DEFAULT 'unprotected'`)
+	} else {
+		if !sqliteColumnExists(db, "resources", "firewall_status") {
+			_, _ = db.Exec(`ALTER TABLE resources ADD COLUMN firewall_status TEXT NOT NULL DEFAULT 'unprotected'`)
+		}
+	}
 
 	return nil
 }

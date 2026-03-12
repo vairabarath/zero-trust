@@ -79,7 +79,7 @@ func LoadConnectorsFromDB(db *sql.DB, registry *Registry) error {
 	return nil
 }
 
-func SaveTunnelerToDB(db *sql.DB, rec TunnelerStatusRecord) error {
+func SaveAgentToDB(db *sql.DB, rec AgentStatusRecord) error {
 	lastSeenAt := rec.LastSeen.UTC().Format(time.RFC3339)
 	_, err := db.Exec(
 		Rebind(`INSERT INTO tunnelers (id, spiffe_id, connector_id, last_seen, last_seen_at, status, installed)
@@ -90,7 +90,7 @@ func SaveTunnelerToDB(db *sql.DB, rec TunnelerStatusRecord) error {
 	return err
 }
 
-func LoadTunnelersFromDB(db *sql.DB, registry *TunnelerStatusRegistry) error {
+func LoadAgentsFromDB(db *sql.DB, registry *AgentStatusRegistry) error {
 	rows, err := db.Query(`SELECT id, spiffe_id, connector_id, last_seen FROM tunnelers`)
 	if err != nil {
 		return err
@@ -103,13 +103,29 @@ func LoadTunnelersFromDB(db *sql.DB, registry *TunnelerStatusRegistry) error {
 			continue
 		}
 		registry.mu.Lock()
-		registry.records[id] = TunnelerStatusRecord{
+		registry.records[id] = AgentStatusRecord{
 			ID:          id,
 			SPIFFEID:    spiffeID,
 			ConnectorID: connectorID,
 			LastSeen:    time.Unix(lastSeen, 0).UTC(),
 		}
 		registry.mu.Unlock()
+	}
+	return nil
+}
+
+func LoadAgentRegistryFromDB(db *sql.DB, registry *AgentRegistry) error {
+	rows, err := db.Query(`SELECT id, spiffe_id FROM tunnelers`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, spiffeID string
+		if err := rows.Scan(&id, &spiffeID); err != nil {
+			continue
+		}
+		registry.Add(id, spiffeID)
 	}
 	return nil
 }

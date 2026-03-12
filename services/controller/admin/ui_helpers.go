@@ -48,7 +48,8 @@ func scanUIResource(scanner interface{ Scan(dest ...any) error }) (uiResource, b
 	var portTo sql.NullInt64
 	var alias sql.NullString
 	var remoteNet sql.NullString
-	if err := scanner.Scan(&res.ID, &res.Name, &res.Type, &res.Address, &protocol, &portFrom, &portTo, &alias, &res.Description, &remoteNet); err != nil {
+	var firewallStatus sql.NullString
+	if err := scanner.Scan(&res.ID, &res.Name, &res.Type, &res.Address, &protocol, &portFrom, &portTo, &alias, &res.Description, &remoteNet, &firewallStatus); err != nil {
 		return uiResource{}, false
 	}
 	res.Protocol = "TCP"
@@ -68,6 +69,10 @@ func scanUIResource(scanner interface{ Scan(dest ...any) error }) (uiResource, b
 	}
 	if remoteNet.Valid {
 		res.RemoteNetwork = &remoteNet.String
+	}
+	res.FirewallStatus = "unprotected"
+	if firewallStatus.Valid && firewallStatus.String != "" {
+		res.FirewallStatus = firewallStatus.String
 	}
 	return res, true
 }
@@ -127,8 +132,8 @@ func scanUIConnector(scanner interface{ Scan(dest ...any) error }) (uiConnector,
 	return c, true
 }
 
-func scanUITunneler(scanner interface{ Scan(dest ...any) error }) (uiTunneler, bool) {
-	var t uiTunneler
+func scanUIAgent(scanner interface{ Scan(dest ...any) error }) (uiAgent, bool) {
+	var t uiAgent
 	var name sql.NullString
 	var status sql.NullString
 	var version sql.NullString
@@ -140,7 +145,7 @@ func scanUITunneler(scanner interface{ Scan(dest ...any) error }) (uiTunneler, b
 	var lastSeen sql.NullString
 	var lastSeenAt sql.NullString
 	if err := scanner.Scan(&t.ID, &name, &status, &version, &hostname, &remoteNetworkID, &connectorID, &revoked, &installed, &lastSeen, &lastSeenAt); err != nil {
-		return uiTunneler{}, false
+		return uiAgent{}, false
 	}
 	t.ConnectorID = connectorID.String
 	t.Name = strings.TrimSpace(name.String)
