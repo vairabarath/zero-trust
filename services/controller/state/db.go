@@ -99,7 +99,8 @@ func initSchemaDialect(db *sql.DB, dialect string) error {
 			alias TEXT,
 			description TEXT NOT NULL DEFAULT '',
 			remote_network_id TEXT NOT NULL DEFAULT '',
-			connector_id TEXT NOT NULL DEFAULT ''
+			connector_id TEXT NOT NULL DEFAULT '',
+			firewall_status TEXT NOT NULL DEFAULT 'unprotected'
 		)`,
 		`CREATE TABLE IF NOT EXISTS authorizations (
 			resource_id TEXT NOT NULL,
@@ -249,6 +250,14 @@ func initSchemaDialect(db *sql.DB, dialect string) error {
 		return err
 	}
 
+	// Phase 3 migration: add firewall_status column to resources.
+	if dialect == "postgres" {
+		_, _ = db.Exec(`ALTER TABLE resources ADD COLUMN IF NOT EXISTS firewall_status TEXT NOT NULL DEFAULT 'unprotected'`)
+	} else {
+		if !sqliteColumnExists(db, "resources", "firewall_status") {
+			_, _ = db.Exec(`ALTER TABLE resources ADD COLUMN firewall_status TEXT NOT NULL DEFAULT 'unprotected'`)
+		}
+	}
 
 	return nil
 }

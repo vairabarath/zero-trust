@@ -11,9 +11,9 @@ import ConnectorsPage from './pages/connectors/ConnectorsPage'
 import ConnectorDetailPage from './pages/connectors/ConnectorDetailPage'
 import RemoteNetworksPage from './pages/remote-networks/RemoteNetworksPage'
 import NetworkDetailPage from './pages/remote-networks/NetworkDetailPage'
-import TunnelersPage from './pages/tunnelers/TunnelersPage'
-import NewTunnelerPage from './pages/tunnelers/NewTunnelerPage'
-import TunnelerDetailPage from './pages/tunnelers/TunnelerDetailPage'
+import AgentsPage from './pages/agents/AgentsPage'
+import NewAgentPage from './pages/agents/NewAgentPage'
+import AgentDetailPage from './pages/agents/AgentDetailPage'
 import PolicyLayout from './pages/policy/PolicyLayout'
 import ResourcePoliciesPage from './pages/policy/ResourcePoliciesPage'
 import ResourcePolicyDetailPage from './pages/policy/ResourcePolicyDetailPage'
@@ -80,9 +80,9 @@ export default function App() {
         <Route path="connectors/:connectorId" element={<ConnectorDetailPage />} />
         <Route path="remote-networks" element={<RemoteNetworksPage />} />
         <Route path="remote-networks/:networkId" element={<NetworkDetailPage />} />
-        <Route path="tunnelers" element={<TunnelersPage />} />
-        <Route path="tunnelers/new" element={<NewTunnelerPage />} />
-        <Route path="tunnelers/:tunnelerId" element={<TunnelerDetailPage />} />
+        <Route path="agents" element={<AgentsPage />} />
+        <Route path="agents/new" element={<NewAgentPage />} />
+        <Route path="agents/:agentId" element={<AgentDetailPage />} />
         <Route path="policy" element={<PolicyLayout />}>
           <Route index element={<Navigate to="resource-policies" replace />} />
           <Route path="resource-policies" element={<ResourcePoliciesPage />} />

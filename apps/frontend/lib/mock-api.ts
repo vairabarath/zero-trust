@@ -13,8 +13,9 @@ import {
   Subject,
   RemoteNetwork,
   Connector,
-  Tunneler,
+  Agent,
   ResourceType,
+  FirewallStatus,
   DiscoveredResource,
   ScanJob,
 } from './types';
@@ -99,19 +100,25 @@ export async function addRemoteNetwork(data: { name: string; location: string })
   });
 }
 
+export async function deleteRemoteNetwork(networkId: string): Promise<void> {
+  await request(`/api/remote-networks/${encodeURIComponent(networkId)}`, {
+    method: 'DELETE',
+  });
+}
+
 // API: Get all connectors
 export async function getConnectors(): Promise<Connector[]> {
   return request<Connector[]>('/api/connectors');
 }
 
-// API: Get all tunnelers
-export async function getTunnelers(): Promise<Tunneler[]> {
-  return request<Tunneler[]>('/api/tunnelers');
+// API: Get all agents
+export async function getAgents(): Promise<Agent[]> {
+  return request<Agent[]>('/api/agents');
 }
 
-// API: Delete (revoke) a tunneler
-export async function deleteTunneler(tunneledId: string): Promise<void> {
-  await request(`/api/tunnelers/${tunneledId}`, { method: 'DELETE' });
+// API: Delete (revoke) an agent
+export async function deleteAgent(agentId: string): Promise<void> {
+  await request(`/api/agents/${agentId}`, { method: 'DELETE' });
 }
 
 // API: Get all subjects (Users, Groups, Service Accounts)
@@ -260,6 +267,22 @@ export async function updateResource(
     method: 'PUT',
     body: JSON.stringify(data),
   });
+}
+
+// API: Set resource firewall status (protect or unprotect)
+export async function setResourceFirewallStatus(
+  resourceId: string,
+  status: FirewallStatus
+): Promise<{ firewall_status: string }> {
+  return request<{ firewall_status: string }>(`/api/resources/${resourceId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ firewall_status: status }),
+  });
+}
+
+// API: Delete a resource
+export async function deleteResource(resourceId: string): Promise<void> {
+  await request(`/api/resources/${resourceId}`, { method: 'DELETE' });
 }
 
 // API: Delete (revoke) a connector

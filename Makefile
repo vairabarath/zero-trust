@@ -1,6 +1,6 @@
-.PHONY: help build-all build-controller build-connector build-tunneler build-frontend
-.PHONY: dev-controller dev-connector dev-tunneler dev-frontend
-.PHONY: test-all test-controller test-connector test-tunneler test-frontend
+.PHONY: help build-all build-controller build-connector build-agent build-frontend
+.PHONY: dev-controller dev-connector dev-agent dev-frontend
+.PHONY: test-all test-controller test-connector test-agent test-frontend
 .PHONY: clean clean-all
 
 help:
@@ -10,20 +10,20 @@ help:
 	@echo "  make build-all        - Build all components"
 	@echo "  make build-controller - Build controller (Go)"
 	@echo "  make build-connector  - Build connector (Rust)"
-	@echo "  make build-tunneler   - Build tunneler (Rust)"
+	@echo "  make build-agent      - Build agent (Rust)"
 	@echo "  make build-frontend   - Build frontend (React)"
 	@echo ""
 	@echo "Development Commands:"
 	@echo "  make dev-controller   - Run controller in dev mode"
 	@echo "  make dev-connector    - Run connector in dev mode"
-	@echo "  make dev-tunneler     - Run tunneler in dev mode"
+	@echo "  make dev-agent        - Run agent in dev mode"
 	@echo "  make dev-frontend     - Run frontend in dev mode"
 	@echo ""
 	@echo "Test Commands:"
 	@echo "  make test-all         - Test all components"
 	@echo "  make test-controller  - Test controller"
 	@echo "  make test-connector   - Test connector"
-	@echo "  make test-tunneler    - Test tunneler"
+	@echo "  make test-agent       - Test agent"
 	@echo "  make test-frontend    - Test frontend"
 	@echo ""
 	@echo "Clean Commands:"
@@ -31,7 +31,7 @@ help:
 	@echo "  make clean-all        - Clean everything including deps"
 
 # Build Commands
-build-all: build-controller build-connector build-tunneler build-frontend
+build-all: build-controller build-connector build-agent build-frontend
 
 build-controller:
 	@echo "Building controller..."
@@ -43,11 +43,11 @@ build-connector:
 	mkdir -p dist
 	cp services/connector/target/release/connector dist/
 
-build-tunneler:
-	@echo "Building tunneler..."
-	cd services/tunneler && cargo build --release
+build-agent:
+	@echo "Building agent..."
+	cd services/agent && cargo build --release
 	mkdir -p dist
-	cp services/tunneler/target/release/tunneler dist/
+	cp services/agent/target/release/agent dist/
 
 build-frontend:
 	@echo "Building frontend..."
@@ -63,16 +63,16 @@ dev-connector:
 	@echo "Running connector in dev mode..."
 	cd services/connector && cargo run
 
-dev-tunneler:
-	@echo "Running tunneler in dev mode..."
-	cd services/tunneler && cargo run
+dev-agent:
+	@echo "Running agent in dev mode..."
+	cd services/agent && cargo run
 
 dev-frontend:
 	@echo "Running frontend in dev mode..."
 	cd apps/frontend && npm run dev
 
 # Test Commands
-test-all: test-controller test-connector test-tunneler test-frontend
+test-all: test-controller test-connector test-agent test-frontend
 
 test-controller:
 	@echo "Testing controller..."
@@ -82,9 +82,9 @@ test-connector:
 	@echo "Testing connector..."
 	cd services/connector && cargo test
 
-test-tunneler:
-	@echo "Testing tunneler..."
-	cd services/tunneler && cargo test
+test-agent:
+	@echo "Testing agent..."
+	cd services/agent && cargo test
 
 test-frontend:
 	@echo "Testing frontend..."
@@ -93,9 +93,9 @@ test-frontend:
 # Clean Commands
 clean:
 	@echo "Cleaning build artifacts..."
-	rm -rf dist/controller dist/connector dist/tunneler
+	rm -rf dist/controller dist/connector dist/agent
 	cd services/connector && cargo clean
-	cd services/tunneler && cargo clean
+	cd services/agent && cargo clean
 	cd apps/frontend && rm -rf dist
 
 clean-all: clean

@@ -46,6 +46,8 @@ export interface GroupMember {
 
 // Resources and Access Control
 export type ResourceType = 'STANDARD' | 'BROWSER' | 'BACKGROUND';
+export type FirewallStatus = 'protected' | 'unprotected';
+
 export interface Resource {
   id: string;
   name: string;
@@ -57,6 +59,7 @@ export interface Resource {
   alias?: string;
   description: string;
   remoteNetworkId?: string;
+  firewallStatus: FirewallStatus;
 }
 
 // Remote Networks (Twingate-style)
@@ -85,13 +88,13 @@ export interface RemoteNetwork {
   updatedAt: string;
 }
 
-export interface Tunneler {
+export interface Agent {
   id: string;
   name: string;
   status: 'online' | 'offline';
   version: string;
   hostname: string;
-  remoteNetworkId: string; // The remote network this tunneler is part of
+  remoteNetworkId: string; // The remote network this agent is part of
 }
 
 // Access Rules bind subjects to resources

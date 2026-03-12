@@ -1,0 +1,28 @@
+# ZTNA Agent Configuration
+
+controller:
+  # Controller address
+  address: "localhost:50051"
+  
+  # mTLS certificate configuration
+  mtls:
+    ca_cert: "../certs/ca/ca.crt"
+    client_cert: "../certs/agents/dev-machine.crt"
+    client_key: "../certs/agents/dev-machine.key"
+
+agent:
+  # Hostname (auto-detected if not specified)
+  hostname: "dev-machine"
+  
+  # TUN interface name
+  tun_name: "ztna0"
+  
+  # State file path (persists protected ports across restarts)
+  state_file: "./agent-state.json"
+
+logging:
+  # Log level: debug, info, warn, error
+  level: "info"
+  
+  # Log output: stdout, stderr, or file path
+  output: "stdout"
