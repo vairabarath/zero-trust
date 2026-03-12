@@ -382,7 +382,21 @@ fn handle_control_message(
         }
         "policy_snapshot" => {
             if let Ok(snap) = serde_json::from_slice::<PolicySnapshot>(&msg.payload) {
-                acl.replace_snapshot(snap);
+                let version = snap.snapshot_meta.policy_version;
+                let resource_count = snap.resources.len();
+                if acl.replace_snapshot(snap) {
+                    info!(
+                        "policy snapshot applied: version={} resources={}",
+                        version,
+                        resource_count
+                    );
+                } else {
+                    warn!(
+                        "policy snapshot rejected: version={} resources={}",
+                        version,
+                        resource_count
+                    );
+                }
             }
         }
         _ => {}

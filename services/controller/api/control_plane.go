@@ -126,7 +126,7 @@ func (s *ControlPlaneServer) Connect(stream controllerpb.ControlPlane_ConnectSer
 		}
 
 		if msg.GetType() == "ping" {
-			if err := stream.Send(&controllerpb.ControlMessage{Type: "pong"}); err != nil {
+			if err := client.send(&controllerpb.ControlMessage{Type: "pong"}); err != nil {
 				return err
 			}
 		}
@@ -249,9 +249,7 @@ func (s *ControlPlaneServer) SendToConnector(connectorID string, msgType string,
 		return fmt.Errorf("connector %s not connected", connectorID)
 	}
 
-	target.sendMu.Lock()
-	defer target.sendMu.Unlock()
-	return target.stream.Send(&controllerpb.ControlMessage{
+	return target.send(&controllerpb.ControlMessage{
 		Type:    msgType,
 		Payload: payload,
 	})
@@ -280,6 +278,15 @@ type connectorClient struct {
 	signingKey  []byte
 }
 
+func (c *connectorClient) send(msg *controllerpb.ControlMessage) error {
+	if c == nil || msg == nil {
+		return nil
+	}
+	c.sendMu.Lock()
+	defer c.sendMu.Unlock()
+	return c.stream.Send(msg)
+}
+
 func (s *ControlPlaneServer) addClient(id string, c *connectorClient) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -301,9 +308,7 @@ func (s *ControlPlaneServer) broadcast(msg *controllerpb.ControlMessage) {
 	s.mu.Unlock()
 
 	for _, c := range clients {
-		c.sendMu.Lock()
-		_ = c.stream.Send(msg)
-		c.sendMu.Unlock()
+		_ = c.send(msg)
 	}
 }
 
@@ -316,12 +321,10 @@ func (s *ControlPlaneServer) sendAllowlist(c *connectorClient) {
 	if err != nil {
 		return
 	}
-	c.sendMu.Lock()
-	_ = c.stream.Send(&controllerpb.ControlMessage{
+	_ = c.send(&controllerpb.ControlMessage{
 		Type:    "tunneler_allowlist",
 		Payload: payload,
 	})
-	c.sendMu.Unlock()
 }
 
 // ACL notifications
@@ -382,12 +385,10 @@ func (s *ControlPlaneServer) sendPolicySnapshot(c *connectorClient) {
 	if err != nil {
 		return
 	}
-	c.sendMu.Lock()
-	err = c.stream.Send(&controllerpb.ControlMessage{
+	err = c.send(&controllerpb.ControlMessage{
 		Type:    "policy_snapshot",
 		Payload: payload,
 	})
-	c.sendMu.Unlock()
 	if err != nil {
 		log.Printf("failed to send policy snapshot to connector %s: %v", c.connectorID, err)
 		return
