@@ -41,7 +41,7 @@ build-connector:
 	@echo "Building connector..."
 	cd services/connector && cargo build --release
 	mkdir -p dist
-	cp /tmp/connector-target/release/connector dist/
+	cp services/connector/target/release/connector dist/
 
 build-tunneler:
 	@echo "Building tunneler..."
