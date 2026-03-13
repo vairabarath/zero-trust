@@ -10,7 +10,7 @@ if [[ "${EUID}" -ne 0 ]]; then
   exit 1
 fi
 
-required_envs=(CONTROLLER_ADDR CONTROLLER_HTTP_ADDR CONNECTOR_ID ENROLLMENT_TOKEN)
+required_envs=(CONTROLLER_ADDR CONTROLLER_HTTP_ADDR CONNECTOR_ID ENROLLMENT_TOKEN POLICY_SIGNING_KEY)
 for var in "${required_envs[@]}"; do
   if [[ -z "${!var:-}" ]]; then
     echo "ERROR: ${var} is required." >&2
@@ -103,9 +103,7 @@ chmod 0644 "${bundled_ca}"
   echo "CONTROLLER_ADDR=${CONTROLLER_ADDR}"
   echo "CONNECTOR_ID=${CONNECTOR_ID}"
   echo "ENROLLMENT_TOKEN=${ENROLLMENT_TOKEN}"
-  if [[ -n "${POLICY_SIGNING_KEY:-}" ]]; then
-    echo "POLICY_SIGNING_KEY=${POLICY_SIGNING_KEY}"
-  fi
+  echo "POLICY_SIGNING_KEY=${POLICY_SIGNING_KEY}"
   if [[ -n "${CONNECTOR_PRIVATE_IP:-}" ]]; then
     echo "CONNECTOR_PRIVATE_IP=${CONNECTOR_PRIVATE_IP}"
   fi
@@ -132,6 +130,10 @@ install -m 0644 "${tmpdir}/connector.service" "${systemd_dst}"
 
 systemctl daemon-reload
 systemctl enable connector.service
+systemctl stop connector.service 2>/dev/null || true
+# Clear any saved enrollment from the previous install so a new CONNECTOR_ID
+# always performs a fresh enrollment instead of reusing an old certificate.
+rm -rf /var/lib/private/connector /var/lib/connector /run/connector
 systemctl start connector.service
 
 # Unset sensitive env vars.

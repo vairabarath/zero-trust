@@ -45,7 +45,6 @@ LockPersonality=yes
 
 UMask=0077
 RuntimeDirectory=connector
-StateDirectory=connector
 NotifyAccess=main
 WatchdogSec=30s
 
