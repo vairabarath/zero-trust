@@ -50,7 +50,14 @@ export default function SignupCustomizePage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!name.trim() || !slug) return
-    updateState({ networkName: name.trim(), networkSlug: slug, teamSize })
+    updateState({
+      networkName: name.trim(),
+      networkSlug: slug,
+      attemptId: typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
+      teamSize,
+    })
     navigate('/signup/finalize')
   }
 

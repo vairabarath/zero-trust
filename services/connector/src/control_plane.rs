@@ -48,7 +48,7 @@ impl ControlPlane for ConnectorControlPlane {
 
         let agent_id = agent_id_from_spiffe(&spiffe_id)
             .unwrap_or_else(|| "unknown".to_string());
-    info!("agent connected: {}", spiffe_id);
+        info!("agent connected: {}", spiffe_id);
 
         let mut in_stream = request.into_inner();
         let (tx, rx) = mpsc::channel::<Result<ControlMessage, Status>>(16);
@@ -103,8 +103,8 @@ impl ControlPlane for ConnectorControlPlane {
                     }
                 }
             }
-            tunneler_registry.remove(&tunneler_id);
-            info!("tunneler disconnected: {}", spiffe_id);
+            agent_registry.remove(&agent_id);
+            info!("agent disconnected: {}", spiffe_id);
         });
 
         Ok(Response::new(tokio_stream::wrappers::ReceiverStream::new(rx)))
@@ -260,5 +260,4 @@ fn extract_spiffe_id_from_request<T>(
     crate::tls::spiffe::extract_spiffe_id(cert)
         .map_err(|e| Status::unauthenticated(format!("SPIFFE extract failed: {}", e)))
 }
-
 

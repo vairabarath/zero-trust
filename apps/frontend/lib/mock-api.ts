@@ -18,6 +18,9 @@ import {
   FirewallStatus,
   DiscoveredResource,
   ScanJob,
+  DiagnosticsData,
+  PingResult,
+  AccessTrace,
 } from './types';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
@@ -340,17 +343,6 @@ export async function addConnector(data: {
   });
 }
 
-// API: Simulate a connector sending a heartbeat (going online)
-export async function simulateConnectorHeartbeat(
-  connectorId: string,
-  enrollmentToken?: string
-): Promise<void> {
-  await request(`/api/connectors/${connectorId}/heartbeat`, {
-    method: 'POST',
-    body: JSON.stringify(enrollmentToken ? { enrollmentToken } : {}),
-  });
-}
-
 // API: Add a new group
 export async function addGroup({
   name,
@@ -452,4 +444,22 @@ export async function getScanStatus(requestId: string): Promise<ScanJob> {
 // API: Get all discovery results
 export async function getDiscoveryResults(): Promise<DiscoveredResource[]> {
   return request<DiscoveredResource[]>('/api/discovery/results');
+}
+
+// API: Diagnostics
+export async function getDiagnostics(): Promise<DiagnosticsData> {
+  return request<DiagnosticsData>('/api/diagnostics');
+}
+
+export async function pingConnector(connectorId: string): Promise<PingResult> {
+  return request<PingResult>(`/api/diagnostics/ping/${encodeURIComponent(connectorId)}`, {
+    method: 'POST',
+  });
+}
+
+export async function traceAccess(userId: string, resourceId: string): Promise<AccessTrace> {
+  return request<AccessTrace>('/api/diagnostics/trace', {
+    method: 'POST',
+    body: JSON.stringify({ userId, resourceId }),
+  });
 }

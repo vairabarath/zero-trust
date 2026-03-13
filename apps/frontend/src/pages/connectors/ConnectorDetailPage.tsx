@@ -54,23 +54,17 @@ export default function ConnectorDetailPage() {
   const detectedHost = window.location.hostname || '127.0.0.1';
   const [controllerAddr, setControllerAddr] = useState(`${detectedHost}:8443`);
   const [controllerHttpAddr, setControllerHttpAddr] = useState(`${detectedHost}:8081`);
-  const [policySigningKey, setPolicySigningKey] = useState('');
-
   const INSTALL_COMMAND = useMemo(() => {
     if (!enrollmentToken) return null;
-    const policyKeyLine = policySigningKey
-      ? `  POLICY_SIGNING_KEY="${policySigningKey}" \\\n`
-      : '';
     return (
       `curl -fsSL https://raw.githubusercontent.com/vairabarath/zero-trust/main/scripts/setup.sh | sudo \\\n` +
       `  CONTROLLER_ADDR="${controllerAddr || '127.0.0.1:8443'}" \\\n` +
       `  CONTROLLER_HTTP_ADDR="${controllerHttpAddr || '127.0.0.1:8081'}" \\\n` +
       `  CONNECTOR_ID="${connectorId ?? 'connector-local-01'}" \\\n` +
       `  ENROLLMENT_TOKEN="${enrollmentToken}" \\\n` +
-      policyKeyLine +
       `  bash`
     );
-  }, [enrollmentToken, controllerAddr, controllerHttpAddr, policySigningKey, connectorId]);
+  }, [enrollmentToken, controllerAddr, controllerHttpAddr, connectorId]);
 
   const loadConnectorData = async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) {
@@ -120,10 +114,11 @@ export default function ConnectorDetailPage() {
 
   useEffect(() => {
     if (!connectorId) return;
-    if (connector?.installed) return;
+    // Poll every 5s until installed, then every 10s to track live online/offline status.
+    const delay = connector?.installed ? 10000 : 5000;
     const interval = setInterval(() => {
       loadConnectorData({ silent: true });
-    }, 5000);
+    }, delay);
     return () => clearInterval(interval);
   }, [connector?.installed, connectorId]);
 
@@ -213,18 +208,6 @@ export default function ConnectorDetailPage() {
             />
             <p className="text-xs text-muted-foreground">
               The CA certificate is fetched automatically from this address.
-            </p>
-          </div>
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="policySigningKey">Policy Signing Key (Optional)</Label>
-            <Input
-              id="policySigningKey"
-              value={policySigningKey}
-              onChange={(e) => setPolicySigningKey(e.target.value)}
-              placeholder="Leave empty to derive from mTLS"
-            />
-            <p className="text-xs text-muted-foreground">
-              The connector derives the policy key from the mTLS session by default. Only set this if derivation fails.
             </p>
           </div>
         </div>

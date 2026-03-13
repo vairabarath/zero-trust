@@ -16,6 +16,12 @@ import (
 	"golang.org/x/oauth2"
 )
 
+// ConnectorStreamChecker allows the admin server to query whether a connector
+// has an active gRPC control-plane stream without importing the api package.
+type ConnectorStreamChecker interface {
+	IsStreamActive(id string) bool
+}
+
 type Server struct {
 	Tokens    *state.TokenStore
 	Reg       *state.Registry
@@ -28,6 +34,9 @@ type Server struct {
 	// Discovery
 	ScanStore    *state.ScanStore
 	ControlPlane DiscoverySender
+
+	// Diagnostics
+	StreamChecker ConnectorStreamChecker
 
 	AdminAuthToken    string
 	InternalAuthToken string
@@ -127,6 +136,10 @@ func (s *Server) adminAuth(next http.Handler) http.Handler {
 						return
 					}
 				}
+				if !s.isAdminEmail(claims.email) {
+					http.Error(w, "forbidden", http.StatusForbidden)
+					return
+				}
 				ctx := withSessionEmail(r.Context(), claims.email)
 				if claims.userID != "" {
 					ctx = withWorkspace(ctx, claims.userID, claims.wsID, claims.wsSlug, claims.wsRole)
@@ -137,6 +150,32 @@ func (s *Server) adminAuth(next http.Handler) http.Handler {
 		}
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 	})
+}
+
+func (s *Server) isAdminEmail(email string) bool {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if email == "" {
+		return false
+	}
+	if len(s.AdminLoginEmails) > 0 {
+		_, ok := s.AdminLoginEmails[email]
+		return ok
+	}
+	db := s.db()
+	if db == nil {
+		return false
+	}
+	var status, role string
+	err := db.QueryRow(state.Rebind(`SELECT status, role FROM users WHERE LOWER(email) = ?`), email).Scan(&status, &role)
+	if err != nil {
+		return false
+	}
+	status = strings.ToLower(strings.TrimSpace(status))
+	role = strings.ToLower(strings.TrimSpace(role))
+	if status != "active" {
+		return false
+	}
+	return role == "admin" || role == "owner"
 }
 
 // deviceAuth accepts only device JWTs (aud:"device").

@@ -77,6 +77,10 @@ func scanUIResource(scanner interface{ Scan(dest ...any) error }) (uiResource, b
 	return res, true
 }
 
+// connectorStaleThreshold is the duration after which a connector with no heartbeat
+// is considered offline regardless of the stored status field.
+const connectorStaleThreshold = 30 * time.Second
+
 func scanUIConnector(scanner interface{ Scan(dest ...any) error }) (uiConnector, bool) {
 	var c uiConnector
 	var name sql.NullString
@@ -90,7 +94,8 @@ func scanUIConnector(scanner interface{ Scan(dest ...any) error }) (uiConnector,
 	var lastPolicyVersion sql.NullInt64
 	var privateIP sql.NullString
 	var revoked sql.NullInt64
-	if err := scanner.Scan(&c.ID, &name, &status, &version, &hostname, &remoteNetworkID, &lastSeen, &lastSeenAt, &installed, &lastPolicyVersion, &privateIP, &revoked); err != nil {
+	var lastSeenUnix sql.NullInt64
+	if err := scanner.Scan(&c.ID, &name, &status, &version, &hostname, &remoteNetworkID, &lastSeen, &lastSeenAt, &installed, &lastPolicyVersion, &privateIP, &revoked, &lastSeenUnix); err != nil {
 		return uiConnector{}, false
 	}
 	c.PrivateIP = privateIP.String
@@ -105,6 +110,13 @@ func scanUIConnector(scanner interface{ Scan(dest ...any) error }) (uiConnector,
 	if revoked.Valid && revoked.Int64 != 0 {
 		c.Status = "revoked"
 		c.Revoked = true
+	} else if c.Status == "online" && lastSeenUnix.Valid && lastSeenUnix.Int64 > 0 {
+		// Derive live status from the last heartbeat timestamp. If the connector
+		// has not been seen within the stale threshold, treat it as offline even
+		// if the stored status still says online.
+		if time.Since(time.Unix(lastSeenUnix.Int64, 0)) > connectorStaleThreshold {
+			c.Status = "offline"
+		}
 	}
 	c.Version = strings.TrimSpace(version.String)
 	if c.Version == "" {

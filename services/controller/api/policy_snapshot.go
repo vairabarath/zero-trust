@@ -149,6 +149,7 @@ func policyResources(db *sql.DB, remoteNetworkID string) ([]PolicyResource, erro
     JOIN user_group_members gm ON gm.group_id = arg.group_id
     JOIN users u ON u.id = gm.user_id
     WHERE ar.resource_id = ? AND ar.enabled = 1 AND u.certificate_identity IS NOT NULL
+      AND LOWER(TRIM(u.status)) = 'active'
     ORDER BY u.certificate_identity ASC`))
 	resources := []PolicyResource{}
 	for rows.Next() {

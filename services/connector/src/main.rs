@@ -197,6 +197,12 @@ async fn cmd_run(systemd_watchdog: bool) -> Result<()> {
         total_ttl,
     );
 
+    // Use the connector ID from the issued SPIFFE cert, not the config value.
+    // The controller derives the policy signing key using this ID as the TLS
+    // exporter context, so both sides must agree on the same value.
+    let enrolled_connector_id = tls::spiffe::connector_id_from_spiffe(&result.spiffe_id)
+        .unwrap_or_else(|| cfg.connector_id.clone());
+
     let allowlist = Arc::new(AgentAllowlist::new());
     let acl = Arc::new(PolicyCache::new(cfg.policy_key.clone(), cfg.stale_grace));
     let (send_ch, recv_ch) = mpsc::channel::<ControlMessage>(16);
@@ -213,7 +219,7 @@ async fn cmd_run(systemd_watchdog: bool) -> Result<()> {
         allowlist.clone(),
         acl.clone(),
         send_ch.clone(),
-        cfg.connector_id.clone(),
+        enrolled_connector_id.clone(),
         agent_registry.clone(),
         firewall_tx.clone(),
         latest_fw_policy.clone(),
@@ -222,7 +228,7 @@ async fn cmd_run(systemd_watchdog: bool) -> Result<()> {
     // Start certificate renewal loop
     tokio::spawn(renewal::renewal_loop(
         cfg.controller_addr.clone(),
-        cfg.connector_id.clone(),
+        enrolled_connector_id.clone(),
         cfg.trust_domain.clone(),
         store.clone(),
         result.ca_pem.clone(),
@@ -232,7 +238,7 @@ async fn cmd_run(systemd_watchdog: bool) -> Result<()> {
     control_plane_loop(
         cfg.controller_addr.clone(),
         cfg.trust_domain.clone(),
-        cfg.connector_id.clone(),
+        enrolled_connector_id.clone(),
         cfg.private_ip.clone(),
         store.clone(),
         result.ca_pem.clone(),
@@ -421,23 +427,36 @@ async fn handle_control_message(
         }
         "policy_snapshot" => {
             if let Ok(snap) = serde_json::from_slice::<PolicySnapshot>(&msg.payload) {
-                acl.replace_snapshot(snap.clone());
+                let version = snap.snapshot_meta.policy_version;
+                let resource_count = snap.resources.len();
+                if acl.replace_snapshot(snap.clone()) {
+                    info!(
+                        "policy snapshot applied: version={} resources={}",
+                        version,
+                        resource_count
+                    );
 
-                // Extract port rules from protected resources and broadcast to agents
-                let port_rules: Vec<serde_json::Value> = snap
-                    .resources
-                    .iter()
-                    .filter(|r| r.firewall_status == "protected")
-                    .flat_map(|r| extract_port_rules(r))
-                    .collect();
-                let policy = serde_json::json!({
-                    "action": "sync",
-                    "protected_ports": port_rules
-                });
-                if let Ok(data) = serde_json::to_vec(&policy) {
-                    // Store latest policy so new agent connections receive it immediately
-                    latest_fw_policy.store(data.clone());
-                    let _ = firewall_tx.send(data);
+                    // Extract port rules from protected resources and broadcast to agents.
+                    let port_rules: Vec<serde_json::Value> = snap
+                        .resources
+                        .iter()
+                        .filter(|r| r.firewall_status == "protected")
+                        .flat_map(|r| extract_port_rules(r))
+                        .collect();
+                    let policy = serde_json::json!({
+                        "action": "sync",
+                        "protected_ports": port_rules
+                    });
+                    if let Ok(data) = serde_json::to_vec(&policy) {
+                        latest_fw_policy.store(data.clone());
+                        let _ = firewall_tx.send(data);
+                    }
+                } else {
+                    warn!(
+                        "policy snapshot rejected: version={} resources={}",
+                        version,
+                        resource_count
+                    );
                 }
             }
         }

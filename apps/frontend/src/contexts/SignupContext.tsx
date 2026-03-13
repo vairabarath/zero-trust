@@ -5,6 +5,7 @@ export interface SignupState {
   useCase: 'home' | 'work' | ''
   networkName: string
   networkSlug: string
+  attemptId: string
   teamSize: string // "just-me" | "2-10" | "11-50" | "51-200" | "200+"
 }
 
@@ -15,6 +16,7 @@ const defaultState: SignupState = {
   useCase: '',
   networkName: '',
   networkSlug: '',
+  attemptId: '',
   teamSize: '',
 }
 

@@ -222,6 +222,7 @@ func main() {
 		RemoteNet:         remoteNetStore,
 		ScanStore:         scanStore,
 		ControlPlane:      controlPlaneServer,
+		StreamChecker:     controlPlaneServer,
 		AdminAuthToken:    adminAuthToken,
 		InternalAuthToken: internalAuthToken,
 		CACertPEM:         caCertPEM,

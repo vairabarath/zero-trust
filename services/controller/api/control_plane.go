@@ -71,7 +71,9 @@ func (s *ControlPlaneServer) Connect(stream controllerpb.ControlPlane_ConnectSer
 	}
 	signingKey := derivePolicyKey(stream.Context(), connectorID)
 	if len(signingKey) == 0 {
-		log.Printf("policy key derivation failed for connector %s", connectorID)
+		log.Printf("policy key derivation failed for connector %s: no mTLS client cert, policy snapshot will not be sent", connectorID)
+	} else {
+		log.Printf("mTLS verified for connector %s: policy signing key derived, policy snapshot will be sent", connectorID)
 	}
 	client := &connectorClient{
 		stream:      stream,
@@ -83,6 +85,37 @@ func (s *ControlPlaneServer) Connect(stream controllerpb.ControlPlane_ConnectSer
 	s.sendAllowlist(client)
 	s.sendPolicySnapshot(client)
 
+	// Log connection event and mark connector online.
+	connectTime := time.Now().UTC()
+	connectISO := connectTime.Format("2006-01-02T15:04:05.000Z")
+	if s.db != nil && connectorID != "" {
+		connMsg := "control-plane connected · no client cert · policy snapshot skipped"
+		if len(signingKey) > 0 {
+			connMsg = "control-plane connected · mTLS verified · policy snapshot sent"
+		}
+		_, _ = s.db.Exec(
+			state.Rebind(`INSERT INTO connector_logs (connector_id, timestamp, message) VALUES (?, ?, ?)`),
+			connectorID, connectISO, connMsg,
+		)
+		_, _ = s.db.Exec(
+			state.Rebind(`UPDATE connectors SET status = 'online', installed = 1, last_seen = ?, last_seen_at = ? WHERE id = ?`),
+			connectTime.Unix(), connectISO, connectorID,
+		)
+	}
+	defer func() {
+		if s.db != nil && connectorID != "" {
+			offISO := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
+			_, _ = s.db.Exec(
+				state.Rebind(`INSERT INTO connector_logs (connector_id, timestamp, message) VALUES (?, ?, ?)`),
+				connectorID, offISO, "control-plane disconnected",
+			)
+			_, _ = s.db.Exec(
+				state.Rebind(`UPDATE connectors SET status = 'offline' WHERE id = ?`),
+				connectorID,
+			)
+		}
+	}()
+
 	for {
 		msg, err := stream.Recv()
 		if err == io.EOF {
@@ -93,7 +126,7 @@ func (s *ControlPlaneServer) Connect(stream controllerpb.ControlPlane_ConnectSer
 		}
 
 		if msg.GetType() == "ping" {
-			if err := stream.Send(&controllerpb.ControlMessage{Type: "pong"}); err != nil {
+			if err := client.send(&controllerpb.ControlMessage{Type: "pong"}); err != nil {
 				return err
 			}
 		}
@@ -216,9 +249,7 @@ func (s *ControlPlaneServer) SendToConnector(connectorID string, msgType string,
 		return fmt.Errorf("connector %s not connected", connectorID)
 	}
 
-	target.sendMu.Lock()
-	defer target.sendMu.Unlock()
-	return target.stream.Send(&controllerpb.ControlMessage{
+	return target.send(&controllerpb.ControlMessage{
 		Type:    msgType,
 		Payload: payload,
 	})
@@ -257,6 +288,29 @@ type connectorClient struct {
 	signingKey  []byte
 }
 
+func (c *connectorClient) send(msg *controllerpb.ControlMessage) error {
+	if c == nil || msg == nil {
+		return nil
+	}
+	c.sendMu.Lock()
+	defer c.sendMu.Unlock()
+	return c.stream.Send(msg)
+}
+
+// IsStreamActive returns true if a connector with the given ID currently has
+// an active gRPC control-plane stream. Both the raw connector ID and its SPIFFE
+// ID key are checked.
+func (s *ControlPlaneServer) IsStreamActive(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for key, c := range s.clients {
+		if key == id || c.connectorID == id {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *ControlPlaneServer) addClient(id string, c *connectorClient) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -278,9 +332,7 @@ func (s *ControlPlaneServer) broadcast(msg *controllerpb.ControlMessage) {
 	s.mu.Unlock()
 
 	for _, c := range clients {
-		c.sendMu.Lock()
-		_ = c.stream.Send(msg)
-		c.sendMu.Unlock()
+		_ = c.send(msg)
 	}
 }
 
@@ -293,12 +345,10 @@ func (s *ControlPlaneServer) sendAllowlist(c *connectorClient) {
 	if err != nil {
 		return
 	}
-	c.sendMu.Lock()
-	_ = c.stream.Send(&controllerpb.ControlMessage{
+	_ = c.send(&controllerpb.ControlMessage{
 		Type:    "agent_allowlist",
 		Payload: payload,
 	})
-	c.sendMu.Unlock()
 }
 
 // ACL notifications
@@ -359,12 +409,15 @@ func (s *ControlPlaneServer) sendPolicySnapshot(c *connectorClient) {
 	if err != nil {
 		return
 	}
-	c.sendMu.Lock()
-	_ = c.stream.Send(&controllerpb.ControlMessage{
+	err = c.send(&controllerpb.ControlMessage{
 		Type:    "policy_snapshot",
 		Payload: payload,
 	})
-	c.sendMu.Unlock()
+	if err != nil {
+		log.Printf("failed to send policy snapshot to connector %s: %v", c.connectorID, err)
+		return
+	}
+	log.Printf("policy snapshot sent to connector %s (%d resources)", c.connectorID, len(snap.Resources))
 }
 
 func parseConnectorID(spiffeID string) string {
