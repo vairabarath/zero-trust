@@ -125,6 +125,8 @@ install -m 0644 "${tmpdir}/agent.service" "${systemd_dst}"
 
 systemctl daemon-reload
 systemctl enable agent.service
+systemctl stop agent.service 2>/dev/null || true
+rm -rf /var/lib/private/agent /var/lib/agent /run/agent
 systemctl start agent.service
 
 unset ENROLLMENT_TOKEN
