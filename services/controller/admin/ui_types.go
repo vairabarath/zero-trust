@@ -24,6 +24,7 @@ type uiGroup struct {
 	MemberCount   int    `json:"memberCount"`
 	ResourceCount int    `json:"resourceCount"`
 	CreatedAt     string `json:"createdAt"`
+	UpdatedAt     string `json:"updatedAt"`
 }
 
 type uiGroupMember struct {

@@ -10,12 +10,17 @@ interface BackendGroup {
   Name?: string
   description?: string
   Description?: string
+  memberCount?: number
+  MemberCount?: number
   members?: number
   Members?: number
-  resource_count?: number
+  resourceCount?: number
   ResourceCount?: number
+  resource_count?: number
+  createdAt?: string
   created_at?: string
   CreatedAt?: string
+  updatedAt?: string
   updated_at?: string
   UpdatedAt?: string
 }
@@ -29,17 +34,17 @@ function mapBackendGroup(group: BackendGroup) {
     description,
     type: 'GROUP',
     displayLabel: `Group: ${name || 'Unknown'}`,
-    memberCount: group.members ?? group.Members ?? 0,
-    resourceCount: group.resource_count ?? group.ResourceCount ?? 0,
-    createdAt: group.created_at ?? group.CreatedAt ?? '',
-    updatedAt: group.updated_at ?? group.UpdatedAt ?? '',
+    memberCount: group.memberCount ?? group.MemberCount ?? group.members ?? group.Members ?? 0,
+    resourceCount: group.resourceCount ?? group.ResourceCount ?? group.resource_count ?? 0,
+    createdAt: group.createdAt ?? group.created_at ?? group.CreatedAt ?? '',
+    updatedAt: group.updatedAt ?? group.updated_at ?? group.UpdatedAt ?? '',
   }
 }
 
 // GET /api/groups
 router.get('/', async (_req: Request, res: Response) => {
   try {
-    const groups = await proxyToBackend<BackendGroup[]>('/api/admin/user-groups')
+    const groups = await proxyToBackend<BackendGroup[]>('/api/groups')
     res.json(groups.map(mapBackendGroup))
   } catch (error) {
     res.status(500).json({ error: (error as Error).message })
