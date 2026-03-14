@@ -25,7 +25,8 @@ npm run lint    # ESLint
 
 ```bash
 go build ./...
-DATABASE_URL="postgres://..." go test ./...  # tests skip if DATABASE_URL is unset
+DATABASE_URL="postgres://..." go test ./...                    # tests skip if DATABASE_URL is unset
+DATABASE_URL="postgres://..." go test ./admin/... -run TestFoo  # run a single test
 
 # Run (requires env vars)
 sudo TRUST_DOMAIN="mycorp.internal" \
@@ -61,7 +62,7 @@ make clean              # Remove build artifacts
 
 ### Services
 
-- **Controller** (`services/controller/`): Go service. Internal CA + enrollment gRPC server on `:8443`, admin HTTP API on `:8081`. Manages SQLite DB, token store, ACLs, and policy distribution.
+- **Controller** (`services/controller/`): Go service. Internal CA + enrollment gRPC server on `:8443`, admin HTTP API on `:8081`. Manages PostgreSQL DB, token store, ACLs, and policy distribution.
 - **Connector** (`services/connector/`): Rust service. Gateway between agents and resources, accepts inbound agent connections on `:9443`.
 - **Agent** (`services/agent/`): Rust client service. Connects to connector with mTLS, provides local SOCKS5 proxy and nftables firewall enforcement.
 
@@ -71,7 +72,7 @@ All services use SPIFFE IDs under trust domain `spiffe://mycorp.internal`:
 
 Go module name for controller is `controller` (in `services/controller/go.mod`).
 
-Admin HTTP API routes live in `services/controller/admin/` — `handlers_remote_networks.go`, `handlers_users.go`, `handlers_discovery.go`, `oauth_invite_handlers.go` for core routes; UI-specific endpoints split across `ui_access_rules.go`, `ui_connectors.go`, `ui_groups.go`, `ui_resources.go`, `ui_tunnelers.go`, `ui_users.go`, `ui_remote_networks.go`; `ui_routes.go` for routing; `session_helpers.go` for session utilities. gRPC implementations are in `services/controller/api/`.
+Admin HTTP API routes live in `services/controller/admin/` — `handlers_remote_networks.go`, `handlers_users.go`, `handlers_discovery.go`, `handlers_device_auth.go`, `handlers_sessions.go`, `handlers_identity_providers.go`, `oauth_invite_handlers.go`, `oauth_providers.go`, `workspace_handlers.go`, `device_routes.go` for core routes; UI-specific endpoints split across `ui_access_rules.go`, `ui_agents.go`, `ui_connectors.go`, `ui_diagnostics.go`, `ui_groups.go`, `ui_helpers.go`, `ui_policy.go`, `ui_resources.go`, `ui_types.go`, `ui_users.go`, `ui_remote_networks.go`; `ui_routes.go` for routing; `session_helpers.go` for session utilities. gRPC implementations are in `services/controller/api/` (`enroll.go`, `control_plane.go`, `policy_snapshot.go`, `interceptor.go`).
 
 Protobuf definitions are in `shared/proto/controller.proto`.
 
