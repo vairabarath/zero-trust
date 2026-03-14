@@ -80,6 +80,7 @@ func consumeOAuthState(state string) bool {
 // handleProviderLogin returns a handler that redirects the user to the OAuth provider's consent screen.
 // If ?flow=signup is present, the CSRF state encodes signup data so it survives the redirect round-trip.
 // State format for signup: "signup:<csrf>:<url-encoded ws_name>:<ws_slug>:<signup_id>"
+// State format for workspace login: "workspace:<csrf>:<url-encoded ws_slug>"
 func (s *Server) handleProviderLogin(provider string, cfg *oauth2.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if cfg == nil {
@@ -104,6 +105,8 @@ func (s *Server) handleProviderLogin(provider string, cfg *oauth2.Config) http.H
 				url.QueryEscape(wsSlug),
 				url.QueryEscape(signupID),
 			)
+		} else if wsSlug := strings.TrimSpace(r.URL.Query().Get("ws_slug")); wsSlug != "" {
+			csrfState = fmt.Sprintf("workspace:%s:%s", csrfState, url.QueryEscape(strings.ToLower(wsSlug)))
 		}
 		// Capture the frontend origin so the callback redirects to the correct host
 		// (e.g. LAN IP instead of localhost).
@@ -133,8 +136,10 @@ func (s *Server) handleProviderCallback(provider string, cfg *oauth2.Config, fet
 		// Detect flow type from state prefix.
 		isInvite := strings.HasPrefix(stateParam, "invite:")
 		isSignup := strings.HasPrefix(stateParam, "signup:")
+		isWorkspaceLogin := strings.HasPrefix(stateParam, "workspace:")
 		var inviteToken string
 		var signupWSName, signupWSSlug, signupID string
+		var loginWSSlug string
 
 		if isInvite {
 			inviteToken = strings.TrimPrefix(stateParam, "invite:")
@@ -151,6 +156,15 @@ func (s *Server) handleProviderCallback(provider string, cfg *oauth2.Config, fet
 				if len(parts) >= 5 {
 					signupID, _ = url.QueryUnescape(parts[4])
 				}
+			}
+			if !consumeOAuthState(stateParam) {
+				http.Error(w, "invalid or expired state", http.StatusBadRequest)
+				return
+			}
+		} else if isWorkspaceLogin {
+			parts := strings.SplitN(stateParam, ":", 3)
+			if len(parts) == 3 {
+				loginWSSlug, _ = url.QueryUnescape(parts[2])
 			}
 			if !consumeOAuthState(stateParam) {
 				http.Error(w, "invalid or expired state", http.StatusBadRequest)
@@ -178,6 +192,7 @@ func (s *Server) handleProviderCallback(provider string, cfg *oauth2.Config, fet
 		email := strings.ToLower(emailAddr)
 
 		db := s.db()
+		var userID, wsID, wsSlug, wsRole string
 
 		if isInvite {
 			if db == nil {
@@ -311,21 +326,46 @@ func (s *Server) handleProviderCallback(provider string, cfg *oauth2.Config, fet
 				s.writeAdminAudit(db, email, "signup", email, "ok")
 			}
 		} else {
-			// Regular login: verify email is in the allowed list.
-			if len(s.AdminLoginEmails) > 0 {
-				if _, ok := s.AdminLoginEmails[email]; !ok {
+			// Workspace-scoped login skips the admin allowlist and instead checks workspace membership.
+			if loginWSSlug != "" && s.Workspaces != nil {
+				ws, wsErr := s.Workspaces.GetWorkspaceBySlug(loginWSSlug)
+				if wsErr != nil {
+					http.Error(w, "workspace not found", http.StatusNotFound)
+					return
+				}
+				u, lookupErr := s.Workspaces.GetUserByEmail(email)
+				if lookupErr != nil {
 					http.Error(w, "email not authorised", http.StatusForbidden)
 					return
 				}
-			}
-			if db != nil {
-				s.writeAdminAudit(db, email, "admin_login", email, "ok")
+				member, memberErr := s.Workspaces.GetMember(ws.ID, u.ID)
+				if memberErr != nil {
+					http.Error(w, "email not authorised", http.StatusForbidden)
+					return
+				}
+				userID = u.ID
+				wsID = ws.ID
+				wsSlug = ws.Slug
+				wsRole = member.Role
+				if db != nil {
+					s.writeAdminAudit(db, email, "workspace_login", email, "ok")
+				}
+			} else {
+				// Regular login: verify email is in the allowed list.
+				if len(s.AdminLoginEmails) > 0 {
+					if _, ok := s.AdminLoginEmails[email]; !ok {
+						http.Error(w, "email not authorised", http.StatusForbidden)
+						return
+					}
+				}
+				if db != nil {
+					s.writeAdminAudit(db, email, "admin_login", email, "ok")
+				}
 			}
 		}
 
 		sessionID, _ := randomHex(16)
-		var userID, wsID, wsSlug, wsRole string
-		if s.Users != nil && s.Workspaces != nil {
+		if userID == "" && s.Users != nil && s.Workspaces != nil {
 			if u, lookupErr := s.Workspaces.GetUserByEmail(email); lookupErr == nil {
 				userID = u.ID
 			}

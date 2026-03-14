@@ -18,6 +18,9 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [emailResults, setEmailResults] = useState<{ name: string; slug: string }[] | null>(null)
 
+  const buildWorkspaceLoginUrl = (workspaceSlug: string) =>
+    `${CONTROLLER_URL}/oauth/google/login?return_to=${encodeURIComponent(window.location.origin)}&ws_slug=${encodeURIComponent(workspaceSlug)}`
+
   // If a ?token= param is present (post-OAuth redirect), store it and route based on role.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -28,7 +31,7 @@ export default function LoginPage() {
       if (!claims) {
         navigate('/workspaces', { replace: true })
       } else if (claims.wrole === 'member') {
-        navigate('/app', { replace: true })
+        navigate('/app/install', { replace: true })
       } else {
         navigate('/dashboard/groups', { replace: true })
       }
@@ -45,8 +48,8 @@ export default function LoginPage() {
       const res = await fetch(`${API_BASE}/workspaces/lookup?slug=${encodeURIComponent(slug.trim().toLowerCase())}`)
       const data = await res.json()
       if (data.exists) {
-        // Redirect to the provider login for this workspace
-        window.location.href = `${CONTROLLER_URL}/oauth/google/login?return_to=${encodeURIComponent(window.location.origin)}`
+        // Redirect to the provider login for this workspace.
+        window.location.href = buildWorkspaceLoginUrl(data.slug || slug.trim().toLowerCase())
       } else {
         setError('Network not found. Check the URL and try again.')
       }
@@ -80,7 +83,7 @@ export default function LoginPage() {
   }
 
   const handleNetworkSelect = (networkSlug: string) => {
-    window.location.href = `${CONTROLLER_URL}/oauth/google/login?return_to=${encodeURIComponent(window.location.origin)}`
+    window.location.href = buildWorkspaceLoginUrl(networkSlug)
   }
 
   return (

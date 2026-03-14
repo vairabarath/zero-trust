@@ -104,7 +104,7 @@ function TokenCapture() {
         navigate('/app', { replace: true })
       } else if (aud === 'admin' && claims) {
         if (claims.wrole === 'member') {
-          navigate('/app', { replace: true })
+          navigate('/app/install', { replace: true })
         } else {
           navigate('/dashboard/groups', { replace: true })
         }
@@ -113,7 +113,7 @@ function TokenCapture() {
       } else if (claims.wrole === 'admin' || claims.wrole === 'owner') {
         navigate('/dashboard/groups', { replace: true })
       } else {
-        navigate('/app', { replace: true })
+        navigate('/app/install', { replace: true })
       }
       return
     }

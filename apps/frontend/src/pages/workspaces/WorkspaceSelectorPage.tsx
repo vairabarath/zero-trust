@@ -44,7 +44,7 @@ export default function WorkspaceSelectorPage() {
         localStorage.setItem('authToken', data.token)
         const wsClaims = getWorkspaceClaims(data.token)
         if (wsClaims?.wrole === 'member') {
-          navigate('/app', { replace: true })
+          navigate('/app/install', { replace: true })
         } else {
           navigate('/dashboard', { replace: true })
         }
