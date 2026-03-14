@@ -2,6 +2,7 @@ mod allowlist;
 mod buildinfo;
 mod config;
 mod control_plane;
+mod device_tunnel;
 mod discovery;
 mod enroll;
 mod net_util;
@@ -209,6 +210,18 @@ async fn cmd_run(systemd_watchdog: bool) -> Result<()> {
     let agent_registry = Arc::new(AgentRegistry::new());
     let (firewall_tx, _) = broadcast::channel::<Vec<u8>>(16);
     let latest_fw_policy = LatestFirewallPolicy::new();
+
+    // Start device-tunnel listener (for ztna-client connections) when configured
+    if !cfg.device_tunnel_addr.is_empty() && !cfg.controller_http_url.is_empty() {
+        let dt_addr = cfg.device_tunnel_addr.clone();
+        let dt_ctrl = cfg.controller_http_url.clone();
+        let dt_store = store.clone();
+        tokio::spawn(async move {
+            if let Err(e) = device_tunnel::listen(&dt_addr, dt_ctrl, dt_store).await {
+                warn!("device tunnel stopped: {}", e);
+            }
+        });
+    }
 
     // Start agent-facing gRPC server
     tokio::spawn(server::server_loop(

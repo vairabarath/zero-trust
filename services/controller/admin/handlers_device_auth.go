@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -518,6 +519,148 @@ func (s *Server) handleDeviceToken(w http.ResponseWriter, r *http.Request) {
 		"refresh_token": refreshTokenRaw,
 		"acl":           aclSnapshot,
 		"expires_in":    900,
+	})
+}
+
+// handleDeviceCheckAccess handles POST /api/device/check-access
+// Validates the device JWT and checks whether the authenticated user has an
+// enabled access rule granting them access to destination:port.
+// Input:  { "destination": "...", "protocol": "tcp", "port": 80 }
+// Output: { "allowed": bool, "resource_id": "...", "reason": "..." }
+func (s *Server) handleDeviceCheckAccess(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	tokenStr := s.getTokenFromRequest(r)
+	claims, err := parseAllClaims(tokenStr, s.JWTSecret)
+	if err != nil || claims.aud != "device" {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if claims.userID == "" || claims.wsID == "" {
+		http.Error(w, "token missing uid or wid", http.StatusUnauthorized)
+		return
+	}
+
+	var req struct {
+		Destination string `json:"destination"`
+		Protocol    string `json:"protocol"`
+		Port        int    `json:"port"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+	if req.Destination == "" || req.Port == 0 {
+		http.Error(w, "destination and port are required", http.StatusBadRequest)
+		return
+	}
+	if req.Protocol == "" {
+		req.Protocol = "tcp"
+	}
+
+	db := s.db()
+	if db == nil {
+		http.Error(w, "database not available", http.StatusInternalServerError)
+		return
+	}
+
+	// Fetch all resources the user can access via group membership + enabled access rules.
+	rows, err := db.Query(state.Rebind(`
+		SELECT DISTINCT r.id, r.type, r.address, r.protocol, r.port_from, r.port_to
+		FROM resources r
+		JOIN access_rules ar ON ar.resource_id = r.id
+		JOIN access_rule_groups arg ON arg.rule_id = ar.id
+		JOIN user_group_members gm ON gm.group_id = arg.group_id
+		WHERE gm.user_id = ?
+		  AND ar.enabled = 1
+		  AND r.workspace_id = ?
+	`), claims.userID, claims.wsID)
+	if err != nil {
+		http.Error(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	dest := strings.ToLower(strings.TrimSpace(req.Destination))
+
+	for rows.Next() {
+		var id, resType, address string
+		var protocol sql.NullString
+		var portFrom, portTo sql.NullInt64
+		if err := rows.Scan(&id, &resType, &address, &protocol, &portFrom, &portTo); err != nil {
+			continue
+		}
+
+		// Protocol check
+		resProto := "tcp"
+		if protocol.Valid && protocol.String != "" {
+			resProto = strings.ToLower(protocol.String)
+		}
+		if resProto != strings.ToLower(req.Protocol) {
+			continue
+		}
+
+		// Port range check
+		if portFrom.Valid || portTo.Valid {
+			from := int(portFrom.Int64)
+			to := int(portTo.Int64)
+			if to == 0 {
+				to = from
+			}
+			if from > 0 && (req.Port < from || req.Port > to) {
+				continue
+			}
+		}
+
+		// Address match by resource type (inline normalisation — mirrors api.normalizeResourceType)
+		addr := strings.ToLower(strings.TrimSpace(address))
+		resType = strings.ToLower(strings.TrimSpace(resType))
+		if resType != "cidr" && resType != "internet" && resType != "dns" {
+			if addr == "*" || addr == "internet" {
+				resType = "internet"
+			} else if strings.Contains(addr, "/") {
+				if _, _, err := net.ParseCIDR(addr); err == nil {
+					resType = "cidr"
+				} else {
+					resType = "dns"
+				}
+			} else {
+				resType = "dns"
+			}
+		}
+		switch resType {
+		case "internet":
+			// matches any destination
+		case "cidr":
+			_, ipNet, parseErr := net.ParseCIDR(addr)
+			if parseErr != nil {
+				continue
+			}
+			ip := net.ParseIP(dest)
+			if ip == nil || !ipNet.Contains(ip) {
+				continue
+			}
+		default: // dns / exact
+			if addr != dest {
+				continue
+			}
+		}
+
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"allowed":     true,
+			"resource_id": id,
+			"reason":      "allowed",
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"allowed":     false,
+		"resource_id": "",
+		"reason":      "not_allowed",
 	})
 }
 

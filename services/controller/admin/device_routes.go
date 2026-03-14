@@ -9,4 +9,5 @@ func (s *Server) RegisterDeviceAuthRoutes(mux *http.ServeMux) {
 	mux.Handle("/api/device/token", withCORS(http.HandlerFunc(s.handleDeviceToken)))
 	mux.Handle("/api/device/refresh", withCORS(http.HandlerFunc(s.handleDeviceRefresh)))
 	mux.Handle("/api/device/revoke", withCORS(http.HandlerFunc(s.handleDeviceRevoke)))
+	mux.Handle("/api/device/check-access", withCORS(http.HandlerFunc(s.handleDeviceCheckAccess)))
 }
