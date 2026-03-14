@@ -24,3 +24,6 @@ cd ~/Desktop/tls-mtls/grpccontroller/backend/controller
 
 # Run command v3
 ./run-air.sh
+
+# .env
+  
