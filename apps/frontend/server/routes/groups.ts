@@ -17,8 +17,10 @@ interface BackendGroup {
   resourceCount?: number
   ResourceCount?: number
   resource_count?: number
+  createdAt?: string
   created_at?: string
   CreatedAt?: string
+  updatedAt?: string
   updated_at?: string
   UpdatedAt?: string
 }
@@ -34,8 +36,8 @@ function mapBackendGroup(group: BackendGroup) {
     displayLabel: `Group: ${name || 'Unknown'}`,
     memberCount: group.memberCount ?? group.MemberCount ?? group.members ?? group.Members ?? 0,
     resourceCount: group.resourceCount ?? group.ResourceCount ?? group.resource_count ?? 0,
-    createdAt: group.created_at ?? group.CreatedAt ?? '',
-    updatedAt: group.updated_at ?? group.UpdatedAt ?? '',
+    createdAt: group.createdAt ?? group.created_at ?? group.CreatedAt ?? '',
+    updatedAt: group.updatedAt ?? group.updated_at ?? group.UpdatedAt ?? '',
   }
 }
 
